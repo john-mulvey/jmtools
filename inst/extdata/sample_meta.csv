@@ -1,0 +1,16 @@
+"sample_id","group","Sex","Age","BMI","Ejection fraction (%)"
+"Ctrl1","control","Male",65,20,57
+"Ctrl2","control","Male",35,24,54
+"Ctrl3","control","Male",35,28.1,60
+"Ctrl4","control","Male",65,27.5,56
+"Ctrl5","control","Female",35,23,57
+"Ctrl6","control","Female",65,25.5,60
+"HF1","heart_failure","Female",65,20,22
+"HF2","heart_failure","Female",49,31.5,27
+"HF3","heart_failure","Male",35,28.9,26
+"HF4","heart_failure","Male",65,27.1,22
+"HF5","heart_failure","Male",35,27.9,24
+"HF6","heart_failure","Female",65,24.7,21
+"HF7","heart_failure","Female",35,26.2,23
+"HF8","heart_failure","Male",65,32.3,26
+"HF9","heart_failure","Female",35,28.9,24

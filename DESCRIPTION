@@ -1,0 +1,37 @@
+Package: jmtools
+Title: Personal Utility Functions for R Analysis
+Version: 0.1.0
+Authors@R: person("John", "Mulvey", , "mulveyjf@gmail.com", role = c("aut", "cre"))
+Description: A collection of utility functions for R analysis workflows,
+    including custom ggplot2 themes, Rmd sourcing utilities, and path helpers.
+License: GPL-3
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Imports:
+    ggplot2,
+    glue,
+    igraph,
+    rlang,
+    scales,
+    stringr
+Suggests:
+    dplyr,
+    factoextra,
+    FactoMineR,
+    fgsea,
+    GGally,
+    ggforce,
+    ggpointdensity,
+    ggraph,
+    ggrepel,
+    janitor,
+    knitr,
+    limma,
+    msigdbr,
+    rmarkdown,
+    tibble,
+    tidygraph,
+    tidyr
+Depends:
+    R (>= 3.5.0)

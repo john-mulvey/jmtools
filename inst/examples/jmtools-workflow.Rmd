@@ -1,0 +1,648 @@
+---
+title: "Proteomics Analysis Workflow with jmtools"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Proteomics Analysis Workflow with jmtools}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+
+collapse = TRUE,
+comment = "#>",
+fig.width = 7,
+fig.height = 5,
+message = FALSE,
+warning = FALSE
+)
+```
+
+This vignette demonstrates a typical proteomics analysis workflow using the
+`jmtools` package. We'll analyse a heart failure vs control proteomics dataset,
+covering:
+1. Data loading and preparation
+2. Principal Component Analysis (PCA) with metadata associations
+3. Differential expression analysis with limma
+4. Gene Set Enrichment Analysis (GSEA)
+5. Over-Representation Analysis (ORA)
+
+## Setup
+
+```{r load-packages}
+library(jmtools)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(ggplot2)
+```
+
+## Load Data
+
+We have proteomics data from heart tissue samples comparing heart failure
+patients to healthy controls.
+
+**Data source:** Mulvey, J.F. et al. (2026). An unbiased molecular characterisation
+of peripartum cardiomyopathy hearts identifies mast cell chymase as a new diagnostic
+candidate. *Molecular & Cellular Proteomics*, Volume 0, Issue 0, 101510.
+
+Note: The sample metadata has been derived from the proteomics data patterns for
+demonstration purposes - i.e. is not the actual clinical metadata from the study!
+
+```{r load-data}
+# Load expression data
+abundance <- read.csv(
+  system.file("extdata", "example_proteome.csv", package = "jmtools"),
+  check.names = FALSE
+)
+
+# Load sample metadata
+sample_meta <- read.csv(
+  system.file("extdata", "sample_meta.csv", package = "jmtools"),
+  stringsAsFactors = TRUE,
+  check.names = FALSE
+)
+
+# Preview the data
+dim(abundance)
+head(sample_meta[, 1:6])
+```
+
+## Data Preparation
+
+Extract the expression matrix and gene information:
+
+```{r prepare-data}
+# Sample columns match the sample IDs in metadata
+sample_cols <- sample_meta$sample_id
+
+# Prepare expression data with gene names
+abundance <- abundance |>
+  # Select sample columns and gene names
+  select(all_of(sample_cols), gene = `Gene symbol`) |>
+  # Remove rows with missing or empty gene names
+  filter(!is.na(gene), gene != "") |>
+  # Take first gene name if multiple (separated by ;)
+  mutate(gene = stringr::str_extract(gene, "^[^;]+")) |>
+  # Calculate variance across samples for each row
+  mutate(variance = apply(pick(all_of(sample_cols)), 1, var, na.rm = TRUE)) |>
+  # Remove rows with all NA values
+  filter(variance > 0 | !is.na(variance)) |>
+  # Keep gene with highest variance if duplicated
+  arrange(desc(variance)) |>
+  distinct(gene, .keep_all = TRUE) |>
+  column_to_rownames('gene') |>
+  # Remove variance column
+  select(-variance, all_of(sample_cols))
+
+
+dim(abundance)
+```
+
+## Principal Component Analysis
+
+First, let's generate PCA boilerplate code to see what `jmtools` produces:
+
+```{r pca-boilerplate, eval=FALSE}
+# Generate PCA boilerplate (not run - showing the code structure)
+generate_pca_boilerplate(
+  data_name = "abundance",
+  metadata_name = "sample_meta",
+  id_col = "sample_id"
+)
+```
+
+Now let's run PCA on our data:
+
+```{r run-pca}
+library(ggplot2)
+library(GGally)
+
+# Transpose so samples are rows, run PCA
+pca_input <- t(abundance)
+pca_result <- prcomp(pca_input, scale. = TRUE, center = TRUE)
+
+# Extract scores and combine with metadata
+pca_scores <- as.data.frame(pca_result$x)
+pca_scores$sample_id <- rownames(pca_scores)
+pca_data <- merge(pca_scores, sample_meta, by = "sample_id")
+
+# Calculate variance explained
+var_explained <- summary(pca_result)$importance
+pct_var <- var_explained["Proportion of Variance", ] * 100
+cumulative_var <- var_explained["Cumulative Proportion", ] * 100
+
+# Scores plot (PC1 vs PC2)
+ggplot(pca_data, aes(x = PC1, y = PC2, colour = group)) +
+  geom_point(size = 3, alpha = 0.8) +
+  labs(
+    x = paste0("PC1 (", round(pct_var[1], 1), "%)"),
+    y = paste0("PC2 (", round(pct_var[2], 1), "%)"),
+    title = "PCA Scores Plot"
+  ) +
+  theme_jm()
+
+# Screeplot with cumulative variance
+n_pcs_plot <- min(10, length(pct_var))
+scree_data <- data.frame(
+  PC = factor(paste0("PC", seq_len(n_pcs_plot)), levels = paste0("PC", seq_len(n_pcs_plot))),
+  variance = pct_var[seq_len(n_pcs_plot)],
+  cumulative = cumulative_var[seq_len(n_pcs_plot)]
+)
+scale_factor <- 100 / max(scree_data$variance)
+
+ggplot(scree_data, aes(x = PC)) +
+  geom_col(aes(y = variance), fill = "steelblue", alpha = 0.8) +
+  geom_point(aes(y = cumulative / scale_factor), colour = "darkred", size = 3) +
+  geom_line(aes(y = cumulative / scale_factor, group = 1), colour = "darkred", linewidth = 1) +
+  scale_y_continuous(
+    name = "Variance Explained (%)",
+    sec.axis = sec_axis(~ . * scale_factor, name = "Cumulative Variance (%)")
+  ) +
+  labs(x = "Principal Component", title = "PCA Screeplot") +
+  theme_jm() +
+  theme(
+    axis.title.y.right = element_text(colour = "darkred"),
+    axis.text.y.right = element_text(colour = "darkred")
+  )
+
+# Pairwise component scatterplots
+ggpairs(
+  pca_data,
+  columns = c("PC1", "PC2", "PC3", "PC4", "PC5"),
+  mapping = aes(colour = group),
+  lower = list(continuous = wrap("points", alpha = 0.5, size = 1)),
+  diag = list(continuous = wrap("densityDiag", alpha = 0.5)),
+  upper = list(continuous = wrap("cor", size = 3)),
+  progress = FALSE
+) +
+  theme_jm()
+```
+
+### Test PC-Metadata Associations
+
+Use `test_pc_metadata_associations()` to identify which clinical variables are
+associated with the principal components:
+
+```{r pc-associations}
+# Define variables to test
+vars_to_test <- c("group", "Sex", "Age", "BMI", "Ejection fraction (%)")
+
+# Test associations
+pc_associations <- test_pc_metadata_associations(
+  pca_result = pca_result,
+  metadata = sample_meta,
+  vars_to_test = vars_to_test,
+  id_col = "sample_id",
+  n_pcs = 5,
+  min_var_explained = 5
+)
+
+# View results
+pc_associations |>
+  arrange(p_adj) |>
+  head(10)
+```
+
+### Visualise PC-Metadata Associations
+
+```{r plot-pc-associations, fig.height=4}
+plot_pc_metadata_associations(
+  pc_associations,
+  show_all = TRUE,
+  title = "PC-Metadata Associations"
+)
+```
+
+## Differential Expression Analysis with limma
+
+Generate limma boilerplate for comparing heart failure vs control:
+
+```{r limma-boilerplate, eval=FALSE}
+# Generate limma boilerplate (not run - showing the code structure)
+generate_limma_boilerplate(
+  data_name = "abundance",
+  metadata_name = "sample_meta",
+  feature_id_col = "gene_symbol",
+  formula = "~ 0 + group",
+  contrast = "heart_failure - control"
+)
+```
+
+Run the differential expression analysis:
+
+```{r run-limma}
+library(limma)
+library(janitor)
+library(dplyr)
+library(ggplot2)
+
+# Match samples between data and metadata
+stopifnot(
+  "Metadata ID column not found" = "sample_id" %in% colnames(sample_meta),
+  "Sample IDs must match between data and metadata" =
+    all(colnames(abundance) %in% sample_meta$sample_id)
+)
+sample_meta <- sample_meta[match(colnames(abundance), sample_meta$sample_id), ]
+stopifnot(all(colnames(abundance) == sample_meta$sample_id))
+
+# Significance thresholds
+fc_threshold <- 1
+adj_p_threshold <- 0.05
+
+# Create design matrix
+sample_meta$group <- as.factor(sample_meta$group)
+design <- model.matrix(~ 0 + group, data = sample_meta)
+colnames(design) <- gsub("^group", "", colnames(design))
+head(design)
+
+# Fit linear model
+fit <- lmFit(abundance, design)
+
+# SA plot: check if trend = TRUE is needed in eBayes()
+fit_eb <- eBayes(fit)
+sa_data <- data.frame(average = fit_eb$Amean, sigma = sqrt(fit_eb$s2.post))
+
+ggplot(sa_data, aes(x = average, y = sigma)) +
+  geom_point(alpha = 0.3, size = 1) +
+  geom_smooth(method = "loess", colour = "darkred", se = FALSE) +
+  geom_hline(yintercept = sqrt(fit_eb$s2.prior), colour = "steelblue", linetype = "dashed", linewidth = 1) +
+  labs(
+    x = "Average log-expression",
+    y = "Sqrt(posterior variance)",
+    title = "SA Plot: Check for Mean-Variance Trend",
+    subtitle = "Blue dashed = prior; Red = loess trend. If trend is strong, set use_trend <- TRUE"
+  ) +
+  theme_jm()
+
+# Set to TRUE if SA plot shows a clear mean-variance trend
+use_trend <- FALSE
+# Pairwise contrast: heart_failure - control
+contrast_matrix <- makeContrasts(contrast_of_interest = heart_failure - control, levels = design)
+fit_contrasts <- contrasts.fit(fit, contrast_matrix)
+fit_contrasts <- eBayes(fit_contrasts, trend = use_trend)
+
+# Extract and clean results
+limma_results_heart_failure_vs_control <- topTable(fit_contrasts, coef = "contrast_of_interest", number = Inf, sort.by = "P") |>
+  tibble::rownames_to_column("gene_symbol") |>
+  janitor::clean_names() |>
+  dplyr::rename(adj_p_value = adj_p_val) |>
+  dplyr::mutate(diff_abundant = abs(log_fc) >= fc_threshold & adj_p_value < adj_p_threshold)
+
+# Summary
+message("Pairwise contrast results (heart_failure - control):")
+message("- Total features tested: ", nrow(limma_results_heart_failure_vs_control))
+message("- Significant (|log2FC| >= ", fc_threshold, " & adj_p < ", adj_p_threshold, "): ", sum(limma_results_heart_failure_vs_control$diff_abundant))
+message("- Up-regulated: ", sum(limma_results_heart_failure_vs_control$diff_abundant & limma_results_heart_failure_vs_control$log_fc > 0))
+message("- Down-regulated: ", sum(limma_results_heart_failure_vs_control$diff_abundant & limma_results_heart_failure_vs_control$log_fc < 0))
+
+head(limma_results_heart_failure_vs_control)
+```
+
+### Generate limma Plots
+
+```{r limma-plots-boilerplate, eval=FALSE}
+# Generate plotting boilerplate (not run)
+generate_limma_plots_boilerplate(
+  results_name = "limma_results_heart_failure_vs_control",
+  feature_col = "gene_symbol"
+)
+```
+
+Create a volcano plot:
+
+```{r volcano-plot}
+library(ggplot2)
+library(ggrepel)
+library(ggpointdensity)
+
+# Features to label (customise as needed)
+genes_to_label <- c(
+  # "GENE1",
+  # "GENE2"
+)
+
+# Volcano plot
+highest_sig_pval <- limma_results_heart_failure_vs_control |>
+  dplyr::filter(diff_abundant == TRUE) |>
+  dplyr::pull(p_value) |>
+  max(na.rm = TRUE)
+
+ggplot(limma_results_heart_failure_vs_control, aes(x = log_fc, y = -log10(p_value))) +
+  geom_vline(xintercept = c(-fc_threshold, fc_threshold), linetype = "dashed", colour = "grey60") +
+  geom_hline(yintercept = -log10(highest_sig_pval), linetype = "dashed", colour = "grey60") +
+  geom_pointdensity(size = 1, alpha = 0.7, show.legend = FALSE) +
+  scale_colour_gradient(low = "#6baed6", high = "#08306b") +
+  geom_point(
+    data = . %>% dplyr::filter(diff_abundant == TRUE),
+    colour = "red", size = 1.5, alpha = 0.8
+  ) +
+  geom_text_repel(
+    data = . %>% dplyr::filter(diff_abundant == TRUE | gene_symbol %in% genes_to_label),
+    aes(label = gene_symbol),
+    size = 3, max.overlaps = 20, min.segment.length = 0, show.legend = FALSE
+  ) +
+  labs(
+    x = expression(log[2]~fold~change),
+    y = expression(-log[10]~p-value),
+    title = "Differential Abundance: Volcano Plot"
+  ) +
+  theme_jm()
+
+# MA plot
+ggplot(limma_results_heart_failure_vs_control, aes(x = ave_expr, y = log_fc)) +
+  geom_hline(yintercept = 0, colour = "black") +
+  geom_hline(yintercept = c(-fc_threshold, fc_threshold), linetype = "dashed", colour = "grey60") +
+  geom_pointdensity(size = 1, alpha = 0.7, show.legend = FALSE) +
+  scale_colour_gradient(low = "#6baed6", high = "#08306b") +
+  geom_point(
+    data = . %>% dplyr::filter(diff_abundant == TRUE),
+    colour = "red", size = 1.5, alpha = 0.8
+  ) +
+  geom_text_repel(
+    data = . %>% dplyr::filter(diff_abundant == TRUE | gene_symbol %in% genes_to_label),
+    aes(label = gene_symbol),
+    size = 3, max.overlaps = 20, min.segment.length = 0, show.legend = FALSE
+  ) +
+  labs(
+    x = expression(log[2]~mean~expression),
+    y = expression(log[2]~fold~change),
+    title = "Differential Abundance: MA Plot"
+  ) +
+  theme_jm()
+
+# P-value histogram
+ggplot(limma_results_heart_failure_vs_control, aes(x = p_value)) +
+  geom_histogram(binwidth = 0.025, boundary = 0, fill = "steelblue", colour = "white") +
+  labs(
+    x = "P-value",
+    y = "Count",
+    title = "Differential Abundance: P-value Distribution",
+    subtitle = "Should be uniform with enrichment near 0; U-shape indicates problems"
+  ) +
+  theme_jm()
+```
+
+## Gene Set Enrichment Analysis (GSEA)
+
+Generate GSEA boilerplate:
+
+```{r gsea-boilerplate, eval=FALSE}
+# Generate GSEA boilerplate (not run - showing the code structure)
+generate_gsea_boilerplate(
+  results_name = "limma_results_heart_failure_vs_control",
+  output_name = "gsea_results_heart_failure_vs_control",
+  feature_col = "gene_symbol",
+  stat_col = "t",
+  species = "Homo sapiens",
+  category = "C2",
+  subcategory = "CP:REACTOME"
+)
+```
+
+Run GSEA using Hallmark gene sets:
+
+```{r run-gsea}
+library(msigdbr)
+library(fgsea)
+library(dplyr)
+
+# Get gene sets from msigdbr
+gene_sets_df <- msigdbr(species = "Homo sapiens", category = "C2",
+subcategory = "CP:REACTOME")
+gene_sets <- split(gene_sets_df$gene_symbol, gene_sets_df$gs_name)
+
+message("Loaded ", length(gene_sets), " gene sets")
+message("Gene set sizes: ", min(lengths(gene_sets)), "-", max(lengths(gene_sets)))
+
+# Prepare ranking vector (remove NA and duplicates, keep highest |stat|)
+ranks_df <- limma_results_heart_failure_vs_control |>
+  dplyr::filter(!is.na(t), !is.na(gene_symbol)) |>
+  dplyr::group_by(gene_symbol) |>
+  dplyr::slice_max(abs(t), n = 1, with_ties = FALSE) |>
+  dplyr::ungroup()
+
+ranks <- setNames(ranks_df$t, ranks_df$gene_symbol)
+ranks <- sort(ranks, decreasing = TRUE)
+
+message("Ranking vector: ", length(ranks), " genes")
+message("Range: ", round(min(ranks), 2), " to ", round(max(ranks), 2))
+
+# Run fgsea
+set.seed(42)
+gsea_results_heart_failure_vs_control <- fgsea(pathways = gene_sets, stats = ranks, minSize = 15, maxSize = 500) |>
+  tibble::as_tibble() |>
+  dplyr::rename(
+    gene_set = pathway, p_value = pval, adj_p_value = padj, log2_err = log2err,
+    enrichment_score = ES, nes = NES, n_genes = size, leading_edge = leadingEdge
+  ) |>
+  dplyr::arrange(p_value)
+
+# Summary
+message("GSEA Results Summary:")
+message("- Gene sets tested: ", nrow(gsea_results_heart_failure_vs_control))
+message("- Significant (adj_p < 0.05): ", sum(gsea_results_heart_failure_vs_control$adj_p_value < 0.05, na.rm = TRUE))
+message("- Enriched (NES > 0, adj_p < 0.05): ", sum(gsea_results_heart_failure_vs_control$nes > 0 & gsea_results_heart_failure_vs_control$adj_p_value < 0.05, na.rm = TRUE))
+message("- Depleted (NES < 0, adj_p < 0.05): ", sum(gsea_results_heart_failure_vs_control$nes < 0 & gsea_results_heart_failure_vs_control$adj_p_value < 0.05, na.rm = TRUE))
+
+head(gsea_results_heart_failure_vs_control)
+```
+
+### Plot GSEA Results: Dot Plot
+
+```{r gsea-dots, fig.height=6, fig.width=12}
+plot_gsea_dots(
+  gsea_results_heart_failure_vs_control,
+  n_top = 20,
+  adj_p_threshold = 0.5
+)
+```
+
+### Cluster and Plot GSEA Results
+
+For a more interpretable visualisation, cluster similar gene sets:
+
+```{r gsea-cluster}
+# Cluster significant gene sets
+clustered_gsea <- cluster_enrichment_results(
+  gsea_results_heart_failure_vs_control,
+  adj_p_threshold = 0.05,
+  similarity_threshold = 0.3
+)
+
+# View cluster assignments
+if (!is.null(clustered_gsea)) {
+  clustered_gsea |>
+    select(gene_set, nes, adj_p_value, cluster, cluster_label) |>
+    arrange(cluster, -abs(nes))
+}
+```
+
+```{r gsea-bars, fig.height=5, fig.width=20}
+# Plot clustered results
+if (!is.null(clustered_gsea)) {
+  plot_enrichment_bars(
+    clustered_gsea,
+    score_col = "nes",
+    n_top = 15,
+    title = "GSEA Results (Clustered by Gene Overlap)",
+    x_label = "Normalised Enrichment Score (NES)"
+  )
+}
+```
+
+### GSEA Network Plot
+
+Visualise relationships between enriched gene sets:
+
+```{r gsea-network, fig.height=7, fig.width=8}
+network_plot <- plot_gsea_network(
+  gsea_results_heart_failure_vs_control,
+  adj_p_threshold = 0.55,
+  similarity_threshold = 0.3,
+  min_cluster_size = 2
+)
+
+if (!is.null(network_plot)) {
+  print(network_plot)
+
+  # Access cluster assignments
+  clusters <- attr(network_plot, "clusters")
+  head(clusters)
+}
+```
+
+## Over-Representation Analysis (ORA)
+
+For ORA, we need a list of genes of interest and a background set. Here we'll
+test for enrichment among significantly upregulated proteins.
+
+```{r ora-setup}
+# Define upregulated proteins (significant and positive log fold change)
+upregulated_proteins <- limma_results_heart_failure_vs_control |>
+  filter(diff_abundant == TRUE, log_fc > 0) |>
+  pull(gene_symbol)
+
+# Background is all tested proteins
+background_proteins <- limma_results_heart_failure_vs_control$gene_symbol
+
+message("Upregulated proteins: ", length(upregulated_proteins))
+message("Background proteins: ", length(background_proteins))
+```
+
+Generate ORA boilerplate:
+
+```{r ora-boilerplate, eval=FALSE}
+# Generate ORA boilerplate (not run)
+generate_ora_boilerplate(
+  gene_list_name = "upregulated_proteins",
+  output_name = "ora_results_upregulated",
+  background_name = "background_proteins",
+  species = "Homo sapiens",
+  category = "C2",
+  subcategory = "CP:REACTOME"
+)
+```
+
+Run ORA on significantly upregulated proteins:
+
+```{r run-ora}
+library(msigdbr)
+library(fgsea)
+library(dplyr)
+
+# Get gene sets from msigdbr
+gene_sets_df <- msigdbr(species = "Homo sapiens", category = "C2",
+subcategory = "CP:REACTOME")
+gene_sets <- split(gene_sets_df$gene_symbol, gene_sets_df$gs_name)
+
+message("Loaded ", length(gene_sets), " gene sets")
+message("Gene set sizes: ", min(lengths(gene_sets)), "-", max(lengths(gene_sets)))
+
+# Ensure genes of interest are in the background
+upregulated_proteins <- intersect(upregulated_proteins, background_proteins)
+
+message("Genes of interest: ", length(upregulated_proteins))
+message("Background genes: ", length(background_proteins))
+
+# Run ORA
+ora_results_upregulated <- fora(
+  pathways = gene_sets, genes = upregulated_proteins, universe = background_proteins,
+  minSize = 15, maxSize = 500
+) |>
+  tibble::as_tibble() |>
+  dplyr::rename(
+    gene_set = pathway, p_value = pval, adj_p_value = padj,
+    n_overlap = overlap, n_gene_set = size, overlap_genes = overlapGenes
+  ) |>
+  dplyr::mutate(
+    fold_enrichment = (n_overlap / length(upregulated_proteins)) / (n_gene_set / length(background_proteins)),
+    enrichment_score = log2(fold_enrichment)
+  ) |>
+  dplyr::arrange(p_value)
+
+# Summary
+message("ORA Results Summary:")
+message("- Gene sets tested: ", nrow(ora_results_upregulated))
+message("- Significant (adj_p < 0.05): ", sum(ora_results_upregulated$adj_p_value < 0.05, na.rm = TRUE))
+
+head(ora_results_upregulated)
+```
+
+### Cluster and Plot ORA Results
+
+The same clustering and plotting functions work for ORA results:
+
+```{r ora-cluster}
+# Cluster ORA results (using different column names)
+clustered_ora <- cluster_enrichment_results(
+  ora_results_upregulated,
+  score_col = "enrichment_score",
+  genes_col = "overlap_genes",
+  n_genes_col = "n_gene_set",
+  adj_p_threshold = 0.05,
+  similarity_threshold = 0.3
+)
+
+if (!is.null(clustered_ora)) {
+  clustered_ora |>
+    select(gene_set, enrichment_score, adj_p_value, cluster, cluster_label) |>
+    arrange(cluster, -enrichment_score)
+}
+```
+
+```{r ora-bars, fig.height=4}
+if (!is.null(clustered_ora)) {
+  plot_enrichment_bars(
+    clustered_ora,
+    score_col = "enrichment_score",
+    n_top = 10,
+    title = "ORA Results: Upregulated Genes (Clustered)",
+    x_label = "Enrichment Score (log2 fold enrichment)"
+  )
+}
+```
+
+## Saving Publication-Ready Figures
+
+Use `ggsave_for_publication()` to save figures with appropriate dimensions and
+resolution:
+
+```{r save-figure, eval=FALSE}
+# Save a figure for publication
+p <- plot_gsea_dots(gsea_results, n_top = 20)
+
+ggsave_for_publication(
+  plot = p,
+  filename = "~/Downloads/gsea_dotplot.pdf",
+  column = "single",
+  height = 70
+)
+```
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```
