@@ -11,7 +11,7 @@ plot_enrichment_bars(
   title = "Enrichment Results (Clustered)",
   x_label = "Enrichment Score",
   colours = c(Enriched = "firebrick", Depleted = "steelblue"),
-  wrap_labels = 40,
+  wrap_labels = 30,
   show_n = TRUE,
   point_size = 2,
   point_alpha = 0.6
@@ -35,7 +35,7 @@ depleted). Default: 20.}
 Default: \code{c(Enriched = "firebrick", Depleted = "steelblue")}.}
 
 \item{wrap_labels}{Number of characters at which to wrap long cluster labels.
-Set to \code{NULL} to disable wrapping. Default: 40.}
+Set to \code{NULL} to disable wrapping. Default: 30.}
 
 \item{show_n}{Logical. If \code{TRUE}, appends the number of gene sets in each
 cluster to the label. Default: \code{TRUE}.}
@@ -56,9 +56,8 @@ The plot displays:
 \itemize{
 \item \strong{Bars}: Mean enrichment score for each cluster
 \item \strong{Points}: Individual gene set score values, jittered vertically
-\item \strong{Y-axis}: Cluster labels (representative gene set name)
+\item \strong{Y-axis}: Cluster labels, ordered by score (most positive at top)
 \item \strong{Colour}: Direction of enrichment (Enriched or Depleted)
-\item \strong{Facets}: Separate panels for Depleted and Enriched clusters
 }
 
 This function works with both GSEA and ORA results:

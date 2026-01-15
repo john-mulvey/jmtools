@@ -11,9 +11,10 @@ plot_gsea_network(
   adj_pval_col = "adj_p_value",
   leading_edge_col = "leading_edge",
   n_genes_col = "n_genes",
-  p_threshold = 0.05,
+  adj_p_threshold = 0.05,
   similarity_threshold = 0.3,
   min_cluster_size = 3,
+  exclude_singletons = FALSE,
   show_labels = TRUE,
   label_clusters_by = c("pagerank", "n_genes"),
   layout = "fr",
@@ -43,7 +44,7 @@ leading edge genes (as a list column). Default: "leading_edge".}
 \item{n_genes_col}{Character string specifying the column containing the
 number of genes in each gene set. Default: "n_genes".}
 
-\item{p_threshold}{Adjusted p-value threshold for filtering gene sets.
+\item{adj_p_threshold}{Adjusted p-value threshold for filtering gene sets.
 Default: 0.05.}
 
 \item{similarity_threshold}{Minimum Jaccard similarity to draw an edge
@@ -51,6 +52,9 @@ between two gene sets. Default: 0.3.}
 
 \item{min_cluster_size}{Minimum number of gene sets in a cluster to draw
 a hull and label. Default: 3.}
+
+\item{exclude_singletons}{Logical. If \code{TRUE}, singleton clusters (size 1)
+are excluded from the plot. Default: \code{FALSE}.}
 
 \item{show_labels}{Logical. If \code{TRUE}, shows cluster labels on the plot.
 Default: \code{TRUE}.}
@@ -77,10 +81,18 @@ more convex hulls. Default: 4.}
 \item{seed}{Random seed for layout reproducibility. Default: 42.}
 }
 \value{
-A ggplot2 object with cluster assignments stored in the \code{"clusters"}
-attribute. Access via \code{attr(plot, "clusters")} to get a data frame with
-columns \code{gene_set}, \code{cluster}, and \code{cluster_label}. Returns \code{NULL} with a
-warning if fewer than 2 gene sets meet the significance threshold.
+A ggplot2 object. Returns \code{NULL} with a warning if fewer than 2
+gene sets meet the significance threshold.
+
+\strong{Cluster assignments} are stored as an attribute and can be accessed via
+\code{attr(plot, "clusters")}. This returns a data frame with columns:
+\describe{
+\item{gene_set}{Name of the gene set}
+\item{cluster}{Integer cluster ID (from Walktrap algorithm)}
+\item{nes}{Normalised Enrichment Score}
+\item{cluster_label}{Representative name for clusters meeting
+\code{min_cluster_size} (NA for smaller clusters)}
+}
 }
 \description{
 Creates a network visualisation of Gene Set Enrichment Analysis results,
@@ -104,6 +116,10 @@ based on the genes driving the enrichment signal.
 
 Cluster labels are determined by selecting the most "central" gene set
 within each cluster, either by PageRank centrality or by gene set size.
+
+\strong{Note:} Both this function and \code{\link[=cluster_enrichment_results]{cluster_enrichment_results()}} use the
+Walktrap algorithm for clustering, so cluster assignments should be
+consistent between the two (given the same similarity threshold).
 }
 \section{Required Packages}{
 

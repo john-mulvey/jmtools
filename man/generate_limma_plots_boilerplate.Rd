@@ -5,11 +5,10 @@
 \title{Generate limma results plotting boilerplate code}
 \usage{
 generate_limma_plots_boilerplate(
-  results_name = "results",
+  results_name,
   feature_col = "feature_id",
   logfc_col = "log_fc",
   pval_col = "p_value",
-  adj_pval_col = "adj_p_value",
   avg_expr_col = "ave_expr",
   signif_col = "diff_abundant",
   title = "Differential Abundance"
@@ -17,7 +16,7 @@ generate_limma_plots_boilerplate(
 }
 \arguments{
 \item{results_name}{Character string specifying the name of the results
-data frame variable (output from limma analysis). Default: "results".}
+data frame variable (output from limma analysis).}
 
 \item{feature_col}{Character string specifying the column containing feature
 identifiers (e.g., gene symbols, protein IDs). Default: "feature_id".}
@@ -27,9 +26,6 @@ fold-change values. Default: "log_fc".}
 
 \item{pval_col}{Character string specifying the column containing raw
 p-values. Default: "p_value".}
-
-\item{adj_pval_col}{Character string specifying the column containing
-adjusted p-values. Default: "adj_p_value".}
 
 \item{avg_expr_col}{Character string specifying the column containing
 average expression values. Default: "ave_expr".}
@@ -63,12 +59,14 @@ The code includes a \code{genes_to_label} vector that can be customised to
 annotate specific features of interest on the volcano and MA plots.
 }
 \examples{
-# Generate plotting boilerplate with default settings
-generate_limma_plots_boilerplate()
+# Generate plotting boilerplate
+generate_limma_plots_boilerplate(
+  results_name = "limma_results_treatment_vs_control"
+)
 
 # Customise for specific column names
 generate_limma_plots_boilerplate(
-  results_name = "results_contrast",
+  results_name = "de_results",
   feature_col = "protein_id",
   title = "PPCM vs Control"
 )

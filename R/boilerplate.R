@@ -181,6 +181,11 @@ ggpairs(
 #'   code. Default: 0.05.
 #' @param include_anova Logical. If `TRUE`, includes code for an F-test
 #'   (ANOVA) testing for any differences between groups. Default: `FALSE`.
+#' @param include_effect_size Logical. If `TRUE`, includes code to calculate
+#'   Cohen's d (standardised effect size) for pairwise contrasts. Uses the
+#'   moderated posterior SD from limma's empirical Bayes framework, which
+#'   already addresses small-sample variance instability (hence Hedge's g
+#'   correction is not applied). Default: `TRUE`.
 #'
 #' @return Returns `invisible(NULL)`. The function prints code to the console
 #'   which can be copied into an analysis script.
@@ -241,7 +246,8 @@ generate_limma_boilerplate <- function(data_name,
                                        feature_id_col = "feature_id",
                                        fc_threshold = 1,
                                        adj_p_threshold = 0.05,
-                                       include_anova = FALSE) {
+                                       include_anova = FALSE,
+                                       include_effect_size = TRUE) {
 
   # Validate: need at least one of contrast or anova
   if (is.null(contrast) && !include_anova) {
@@ -271,6 +277,28 @@ generate_limma_boilerplate <- function(data_name,
     ""
   } else {
     glue::glue('colnames(design) <- gsub("^{group_var}", "", colnames(design))')
+  }
+
+  # Build effect size code (optional)
+  if (include_effect_size && !is.null(contrast)) {
+    effect_size_code <- glue::glue('
+
+# Calculate Cohen\'s d (standardised effect size)
+# Uses moderated posterior SD for consistency with limma\'s empirical Bayes framework
+# Note: Hedge\'s g (which adds a small-sample correction) is not used here because
+# the empirical Bayes shrinkage already addresses small-sample variance instability
+moderated_sd <- sqrt(fit_contrasts$s2.post)
+cohens_d_values <- fit_contrasts$coefficients[, "contrast_of_interest"] / moderated_sd
+
+# Add to results (match by feature ID)
+cohens_d_df <- data.frame(
+  feature_id = names(cohens_d_values),
+  cohens_d = as.numeric(cohens_d_values)
+)
+names(cohens_d_df)[1] <- "{feature_id_col}"
+{output_name} <- dplyr::left_join({output_name}, cohens_d_df, by = "{feature_id_col}")')
+  } else {
+    effect_size_code <- ""
   }
 
   # Build code sections
@@ -314,12 +342,12 @@ ggplot(sa_data, aes(x = average, y = sigma)) +
     x = "Average log-expression",
     y = "Sqrt(posterior variance)",
     title = "SA Plot: Check for Mean-Variance Trend",
-    subtitle = "Blue dashed = prior; Red = loess trend. If trend is strong, set use_trend <- TRUE"
+    subtitle = "Blue dashed = prior; Red = loess trend. If flat, set use_trend <- FALSE"
   ) +
   theme_jm()
 
-# Set to TRUE if SA plot shows a clear mean-variance trend
-use_trend <- FALSE
+# Set to FALSE if SA plot shows no mean-variance trend
+use_trend <- TRUE
 ')
 
   # Contrast section (optional)
@@ -337,6 +365,16 @@ fit_contrasts <- eBayes(fit_contrasts, trend = use_trend)
   janitor::clean_names() |>
   dplyr::rename(adj_p_value = adj_p_val) |>
   dplyr::mutate(diff_abundant = abs(log_fc) >= fc_threshold & adj_p_value < adj_p_threshold)
+
+# Calculate sample sizes per group for each feature (non-NA counts)
+sample_sizes_list <- lapply(levels({metadata_name}${group_var}), function(g) {{
+  samples_in_group <- {metadata_name}${id_col}[{metadata_name}${group_var} == g]
+  rowSums(!is.na({data_name}[, samples_in_group, drop = FALSE]))
+}})
+names(sample_sizes_list) <- paste0("n_", levels({metadata_name}${group_var}))
+sample_sizes_df <- as.data.frame(sample_sizes_list)
+sample_sizes_df${feature_id_col} <- rownames({data_name})
+{output_name} <- dplyr::left_join({output_name}, sample_sizes_df, by = "{feature_id_col}"){effect_size_code}
 
 # Summary
 message("Pairwise contrast results ({contrast}):")
@@ -373,6 +411,16 @@ results_anova <- topTable(fit_anova, number = Inf, sort.by = "F") |>
   janitor::clean_names() |>
   dplyr::rename(adj_p_value = adj_p_val) |>
   dplyr::mutate(significant = adj_p_value < adj_p_threshold)
+
+# Calculate sample sizes per group for each feature (non-NA counts)
+sample_sizes_list_anova <- lapply(levels({metadata_name}${group_var}), function(g) {{
+  samples_in_group <- {metadata_name}${id_col}[{metadata_name}${group_var} == g]
+  rowSums(!is.na({data_name}[, samples_in_group, drop = FALSE]))
+}})
+names(sample_sizes_list_anova) <- paste0("n_", levels({metadata_name}${group_var}))
+sample_sizes_df_anova <- as.data.frame(sample_sizes_list_anova)
+sample_sizes_df_anova${feature_id_col} <- rownames({data_name})
+results_anova <- dplyr::left_join(results_anova, sample_sizes_df_anova, by = "{feature_id_col}")
 
 message("ANOVA F-test results (any group difference):")
 message("- Total features tested: ", nrow(results_anova))

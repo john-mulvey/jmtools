@@ -5,23 +5,29 @@
 \title{Generate limma boilerplate code}
 \usage{
 generate_limma_boilerplate(
-  data_name = "abundance",
-  metadata_name = "sample_metadata",
+  data_name,
+  metadata_name,
+  id_col = "sample_id",
   formula = "~ 0 + group",
   contrast = "treatment - control",
   output_name = NULL,
   feature_id_col = "feature_id",
   fc_threshold = 1,
   adj_p_threshold = 0.05,
-  include_anova = FALSE
+  include_anova = FALSE,
+  include_effect_size = TRUE
 )
 }
 \arguments{
 \item{data_name}{Character string specifying the name of the expression/abundance
-matrix variable (features as rows, samples as columns). Default: \code{"abundance"}.}
+matrix variable (features as rows, samples as columns).}
 
 \item{metadata_name}{Character string specifying the name of the metadata
-data frame variable. Default: \code{"sample_metadata"}.}
+data frame variable.}
+
+\item{id_col}{Character string specifying the column in metadata containing
+sample identifiers that match the column names of the data matrix.
+Default: "sample_id".}
 
 \item{formula}{Character string specifying the model formula for the design
 matrix. Use \code{"~ 0 + group"} for a no-intercept model where coefficients
@@ -53,6 +59,12 @@ code. Default: 0.05.}
 
 \item{include_anova}{Logical. If \code{TRUE}, includes code for an F-test
 (ANOVA) testing for any differences between groups. Default: \code{FALSE}.}
+
+\item{include_effect_size}{Logical. If \code{TRUE}, includes code to calculate
+Cohen's d (standardised effect size) for pairwise contrasts. Uses the
+moderated posterior SD from limma's empirical Bayes framework, which
+already addresses small-sample variance instability (hence Hedge's g
+correction is not applied). Default: \code{TRUE}.}
 }
 \value{
 Returns \code{invisible(NULL)}. The function prints code to the console
@@ -87,22 +99,15 @@ Column names in the output are converted to snake_case, with \code{adj.P.Val}
 renamed to \code{adj_p_value} for consistency.
 }
 \examples{
-# Generate boilerplate with default settings
-generate_limma_boilerplate()
-
-# Customise for a specific analysis with no-intercept model
+# Generate boilerplate for basic analysis
 generate_limma_boilerplate(
-  data_name = "protein_matrix",
-  metadata_name = "clinical_data",
-  formula = "~ 0 + condition",
-  contrast = "disease - healthy",
-  fc_threshold = 0.5,
-  adj_p_threshold = 0.1
+  data_name = "abundance",
+  metadata_name = "sample_meta"
 )
 
 # Heart failure vs control example
 generate_limma_boilerplate(
-  data_name = "expr_matrix",
+  data_name = "abundance",
   metadata_name = "sample_meta",
   formula = "~ 0 + group",
   contrast = "heart_failure - control"
@@ -110,14 +115,10 @@ generate_limma_boilerplate(
 
 # Include ANOVA F-test for overall group differences
 generate_limma_boilerplate(
+  data_name = "abundance",
+  metadata_name = "sample_meta",
   formula = "~ 0 + treatment",
-  contrast = "treatment - control",
-  include_anova = TRUE
-)
-
-# ANOVA only (no pairwise contrast)
-generate_limma_boilerplate(
-  contrast = NULL,
+  contrast = "drug - placebo",
   include_anova = TRUE
 )
 }

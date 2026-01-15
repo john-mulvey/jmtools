@@ -11,10 +11,10 @@ plot_gsea_dots(
   pval_col = "p_value",
   adj_pval_col = "adj_p_value",
   n_top = 20,
-  p_threshold = 0.05,
+  adj_p_threshold = 0.05,
   title = "GSEA Results",
   colours = c(Enriched = "firebrick", Depleted = "steelblue"),
-  wrap_labels = 40
+  wrap_labels = 30
 )
 }
 \arguments{
@@ -36,7 +36,7 @@ adjusted p-values for filtering. Default: "adj_p_value".}
 \item{n_top}{Number of top gene sets to show (split between enriched and
 depleted). Default: 20 (i.e., up to 10 enriched and 10 depleted).}
 
-\item{p_threshold}{Adjusted p-value threshold for filtering gene sets.
+\item{adj_p_threshold}{Adjusted p-value threshold for filtering gene sets.
 Default: 0.05.}
 
 \item{title}{Optional plot title. Default: "GSEA Results".}
@@ -45,7 +45,7 @@ Default: 0.05.}
 Default: \code{c(Enriched = "firebrick", Depleted = "steelblue")}.}
 
 \item{wrap_labels}{Number of characters at which to wrap long gene set names.
-Set to \code{NULL} to disable wrapping. Default: 40.}
+Set to \code{NULL} to disable wrapping. Default: 30.}
 }
 \value{
 A ggplot2 object.
@@ -59,10 +59,9 @@ significance indicated by point size.
 The plot displays:
 \itemize{
 \item \strong{X-axis}: Normalised Enrichment Score (NES)
-\item \strong{Y-axis}: Gene set names, ordered by NES within each direction
+\item \strong{Y-axis}: Gene set names, ordered by NES (most positive at top)
 \item \strong{Point size}: \code{-log10(p-value)}, so larger points are more significant
 \item \strong{Point colour}: Direction of enrichment (Enriched or Depleted)
-\item \strong{Facets}: Separate panels for Depleted (NES < 0) and Enriched (NES > 0)
 }
 
 Gene sets are filtered by adjusted p-value, then the top N are selected

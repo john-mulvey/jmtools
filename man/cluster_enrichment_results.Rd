@@ -11,8 +11,9 @@ cluster_enrichment_results(
   adj_pval_col = "adj_p_value",
   genes_col = "leading_edge",
   n_genes_col = "n_genes",
-  p_threshold = 0.05,
-  similarity_threshold = 0.3
+  adj_p_threshold = 0.05,
+  similarity_threshold = 0.3,
+  similarity_metric = c("jaccard", "overlap")
 )
 }
 \arguments{
@@ -37,11 +38,17 @@ for ORA use \code{"overlap_genes"}. Default: \code{"leading_edge"}.}
 number of genes in each gene set. Default: \code{"n_genes"}. For ORA results,
 use \code{"n_gene_set"}.}
 
-\item{p_threshold}{Adjusted p-value threshold for filtering gene sets.
+\item{adj_p_threshold}{Adjusted p-value threshold for filtering gene sets.
 Default: 0.05.}
 
-\item{similarity_threshold}{Minimum Jaccard similarity to consider two gene
+\item{similarity_threshold}{Minimum similarity to consider two gene
 sets as belonging to the same cluster. Default: 0.3.}
+
+\item{similarity_metric}{Character string specifying which similarity metric
+to use. One of \code{"jaccard"} (Jaccard index) or \code{"overlap"} (overlap
+coefficient / Szymkiewicz-Simpson). The overlap coefficient is less
+sensitive to differences in set size, making it better suited for
+hierarchically-related gene sets. Default: \code{"jaccard"}.}
 }
 \value{
 A data frame containing all significant gene sets (one row per gene
@@ -53,16 +60,20 @@ with the largest number of genes in that cluster)}
 }
 }
 \description{
-Clusters significant gene sets based on Jaccard similarity of their
+Clusters significant gene sets based on similarity of their
 overlapping genes. Works with both GSEA results (using leading edge genes)
 and ORA results (using overlap genes). Returns the input data frame with
 added cluster information.
 }
 \details{
-Clustering is performed using connected components: gene sets with Jaccard
-similarity above the threshold are connected, and all connected gene sets
-form a cluster. The cluster label is the name of the gene set with the
-largest number of genes in that cluster.
+Clustering is performed using the Walktrap algorithm, which detects
+communities based on random walks through the similarity network. Gene sets
+that are densely connected (high Jaccard similarity) tend to end up in the
+same cluster. This method can identify meaningful subcommunities even within
+connected components.
+
+The cluster label is the name of the gene set with the largest number of
+genes in that cluster.
 
 Only gene sets meeting the significance threshold are returned. Non-significant
 gene sets are excluded from the output.

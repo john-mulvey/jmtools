@@ -5,8 +5,8 @@
 \title{Generate PCA boilerplate code}
 \usage{
 generate_pca_boilerplate(
-  data_name = "data_matrix",
-  metadata_name = "sample_metadata",
+  data_name,
+  metadata_name,
   colour_var = "group",
   id_col = "sample_id",
   n_pcs_scree = 10,
@@ -17,10 +17,10 @@ generate_pca_boilerplate(
 }
 \arguments{
 \item{data_name}{Character string specifying the name of the data matrix
-variable in the generated code (default: "data_matrix").}
+variable in the generated code.}
 
 \item{metadata_name}{Character string specifying the name of the metadata
-data frame variable (default: "sample_metadata").}
+data frame variable.}
 
 \item{colour_var}{Character string specifying the metadata column to use
 for colouring points (default: "group").}
@@ -30,14 +30,12 @@ sample identifiers that match the column names of the data matrix
 (default: "sample_id").}
 
 \item{n_pcs_scree}{Number of principal components to show in the screeplot
-
 (default: 10).}
 
 \item{n_pcs_pairs}{Number of principal components to include in the ggpairs
 plot (default: 5).}
 
 \item{scale}{Logical indicating whether to scale variables to unit variance
-
 in the generated code (default: TRUE).}
 
 \item{center}{Logical indicating whether to centre variables in the
@@ -68,8 +66,11 @@ variance (points/line on secondary y-axis)
 }
 }
 \examples{
-# Generate boilerplate with default settings
-generate_pca_boilerplate()
+# Generate boilerplate for proteomics analysis
+generate_pca_boilerplate(
+  data_name = "abundance",
+  metadata_name = "sample_meta"
+)
 
 # Customise variable names
 generate_pca_boilerplate(

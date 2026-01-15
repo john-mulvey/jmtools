@@ -58,11 +58,13 @@ small), consider adjusting the limits or using \code{c(0, 1)}.
 }
 \examples{
 \dontrun{
-# First run association tests
+# First run PCA and association tests
+pca_result <- prcomp(t(expr_matrix), scale. = TRUE, center = TRUE)
 associations <- test_pc_metadata_associations(
-  pca_coords = pca_result[["ind"]]$coord,
+  pca_result = pca_result,
   metadata = sample_metadata,
-  vars_to_test = c("age", "sex", "treatment")
+  vars_to_test = c("age", "sex", "treatment"),
+  id_col = "sample_id"
 )
 
 # Plot all associations

@@ -5,20 +5,23 @@
 \title{Generate GSEA boilerplate code}
 \usage{
 generate_gsea_boilerplate(
-  results_name = "results",
+  results_name,
+  output_name,
   feature_col = "gene_symbol",
   stat_col = "t",
   species = "Homo sapiens",
   category = "H",
   subcategory = NULL,
   min_size = 15,
-  max_size = 500,
-  output_name = "gsea_results"
+  max_size = 500
 )
 }
 \arguments{
 \item{results_name}{Character string specifying the name of the limma results
-data frame variable. Default: "results".}
+data frame variable.}
+
+\item{output_name}{Character string specifying the name for the output
+results data frame.}
 
 \item{feature_col}{Character string specifying the column containing gene
 symbols for matching to gene sets. Default: "gene_symbol".}
@@ -40,9 +43,6 @@ Default: "H".}
 \item{min_size}{Minimum gene set size for fgsea filtering. Default: 15.}
 
 \item{max_size}{Maximum gene set size for fgsea filtering. Default: 500.}
-
-\item{output_name}{Character string specifying the name for the output
-results data frame. Default: "gsea_results".}
 }
 \value{
 Returns \code{invisible(NULL)}. The function prints code to the console
@@ -85,25 +85,16 @@ Cellular Component)}
 
 \examples{
 # Generate boilerplate for hallmark gene sets (human)
-generate_gsea_boilerplate()
-
-# Use KEGG pathways
 generate_gsea_boilerplate(
+  results_name = "limma_results_treatment_vs_control",
+  output_name = "gsea_hallmark"
+)
+
+# Use Reactome pathways
+generate_gsea_boilerplate(
+  results_name = "de_results",
+  output_name = "gsea_reactome",
   category = "C2",
-  subcategory = "CP:KEGG"
-)
-
-# Mouse GO Biological Process
-generate_gsea_boilerplate(
-  species = "Mus musculus",
-  category = "C5",
-  subcategory = "GO:BP"
-)
-
-# Customise column names to match your data
-generate_gsea_boilerplate(
-  results_name = "results_contrast",
-  feature_col = "symbol",
-  stat_col = "t"
+  subcategory = "CP:REACTOME"
 )
 }

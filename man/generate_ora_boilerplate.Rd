@@ -5,22 +5,25 @@
 \title{Generate ORA boilerplate code}
 \usage{
 generate_ora_boilerplate(
-  gene_list_name = "sig_genes",
-  background_name = "background_genes",
+  gene_list_name,
+  background_name,
+  output_name,
   species = "Homo sapiens",
   category = "H",
   subcategory = NULL,
   min_size = 15,
-  max_size = 500,
-  output_name = "ora_results"
+  max_size = 500
 )
 }
 \arguments{
 \item{gene_list_name}{Character string specifying the name of the vector
-containing genes of interest (e.g., significant genes). Default: "sig_genes".}
+containing genes of interest (e.g., significant genes).}
 
 \item{background_name}{Character string specifying the name of the vector
-containing background genes (e.g., all measured genes). Default: "background_genes".}
+containing background genes (e.g., all measured genes).}
+
+\item{output_name}{Character string specifying the name for the output
+results data frame.}
 
 \item{species}{Character string specifying the species for msigdbr. Common
 values: "Homo sapiens", "Mus musculus". Default: "Homo sapiens".}
@@ -36,9 +39,6 @@ Default: "H".}
 \item{min_size}{Minimum gene set size for filtering. Default: 15.}
 
 \item{max_size}{Maximum gene set size for filtering. Default: 500.}
-
-\item{output_name}{Character string specifying the name for the output
-results data frame. Default: "ora_results".}
 }
 \value{
 Returns \code{invisible(NULL)}. The function prints code to the console
@@ -81,24 +81,18 @@ Cellular Component)}
 
 \examples{
 # Generate boilerplate for hallmark gene sets (human)
-generate_ora_boilerplate()
+generate_ora_boilerplate(
+  gene_list_name = "upregulated_genes",
+  background_name = "all_detected_genes",
+  output_name = "ora_hallmark"
+)
 
 # Use Reactome pathways
 generate_ora_boilerplate(
+  gene_list_name = "sig_genes",
+  background_name = "background_genes",
+  output_name = "ora_reactome",
   category = "C2",
   subcategory = "CP:REACTOME"
-)
-
-# Mouse GO Biological Process
-generate_ora_boilerplate(
-  species = "Mus musculus",
-  category = "C5",
-  subcategory = "GO:BP"
-)
-
-# Customise input names
-generate_ora_boilerplate(
-  gene_list_name = "upregulated_genes",
-  background_name = "all_detected_genes"
 )
 }
