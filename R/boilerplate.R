@@ -854,3 +854,120 @@ head({output_name})
   cat(code)
   return(invisible(NULL))
 }
+
+
+#' Generate Table 1 boilerplate code
+#'
+#' Outputs boilerplate R code for creating a "Table 1" clinical characteristics
+#' summary using gtsummary. The generated code includes variable selection,
+#' summary statistics with customisable labels and types, optional between-group
+#' comparisons, and gt formatting with optional PDF export.
+#'
+#' @param data_name Character string specifying the name of the data frame
+#'   variable containing clinical/demographic data. Default: "df".
+#' @param group_var Character string specifying the column to stratify by
+#'   (e.g., treatment group, disease status). Set to `NULL` for an ungrouped
+#'   summary (single-column table). Default: "group".
+#' @param output_path Character string specifying the file path for saving the
+#'   table as PDF via `gt::gtsave()`. Set to `NULL` to skip saving.
+#'   Default: `NULL`.
+#'
+#' @return Returns `invisible(NULL)`. The function prints code to the console
+#'   which can be copied into an analysis script.
+#'
+#' @details
+#' The generated code follows a standard gtsummary workflow:
+#'
+#' \enumerate{
+#'   \item Select variables of interest from the data frame
+#'   \item Create summary table with `gtsummary::tbl_summary()`, specifying
+#'     variable labels, types, and summary statistics
+#'   \item If stratified by a grouping variable, add between-group p-values
+#'     with `add_p()`, significance stars, and separate p-value footnotes
+#'   \item Convert to gt format and apply formatting (font size, font family)
+#'   \item Optionally save as PDF
+#' }
+#'
+#' The generated code includes placeholder variable names and labels that
+#' should be edited to match the actual data. Continuous variables default
+#' to median (IQR) and categorical variables to counts (percentages).
+#'
+#' @export
+#'
+#' @examples
+#' # Basic grouped table
+#' generate_table1_boilerplate(
+#'   data_name = "sample_meta",
+#'   group_var = "group"
+#' )
+#'
+#' # Ungrouped summary with PDF output
+#' generate_table1_boilerplate(
+#'   data_name = "clinical_data",
+#'   group_var = NULL,
+#'   output_path = "../results/tables/table_one.pdf"
+#' )
+generate_table1_boilerplate <- function(data_name = "df",
+                                        group_var = "group",
+                                        output_path = NULL) {
+
+  # Build conditional code sections
+  if (!is.null(group_var)) {
+    select_group_line <- paste0("    ", group_var, ",\n")
+    by_line <- paste0("    by = ", group_var, ",\n")
+    add_p_code <- " %>%\n  add_p() %>%\n  add_significance_stars() %>%\n  separate_p_footnotes()"
+  } else {
+    select_group_line <- ""
+    by_line <- ""
+    add_p_code <- ""
+  }
+
+  # Build save code (optional)
+  if (!is.null(output_path)) {
+    save_code <- glue::glue('
+table1_gt %>%
+  gtsave("{output_path}")
+')
+  } else {
+    save_code <- ""
+  }
+
+  code <- paste0('
+library(gtsummary)
+library(gt)
+library(dplyr)
+
+# Select variables of interest
+# Edit the select() and tbl_summary() calls below to match your data
+table1 <- ', data_name, ' %>%
+  dplyr::select(
+', select_group_line, '    var1,
+    var2,
+    var3
+  ) %>%
+  tbl_summary(
+', by_line, '    missing = "ifany",
+    type = list(
+      var1 ~ "continuous",
+      var2 ~ "categorical"
+    ),
+    label = list(
+      var1 ~ "Variable 1",
+      var2 ~ "Variable 2",
+      var3 ~ "Variable 3"
+    ),
+    statistic = list(
+      all_continuous() ~ "{median} ({p25}, {p75})"
+    )
+  )', add_p_code, '
+
+# Convert to gt and format
+table1_gt <- table1 %>%
+  as_gt() %>%
+  gt::tab_options(table.font.size = 8, table.font.names = "Arial")
+table1_gt
+', save_code)
+
+  cat(code)
+  return(invisible(NULL))
+}

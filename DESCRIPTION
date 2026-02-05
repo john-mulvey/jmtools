@@ -25,6 +25,8 @@ Suggests:
     ggpointdensity,
     ggraph,
     ggrepel,
+    gt,
+    gtsummary,
     janitor,
     knitr,
     limma,
