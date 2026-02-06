@@ -44,3 +44,28 @@ snippet abundrank
 			y = expression(Mean~log[2]~abundance),
 			title = "Protein abundance rank") +
 		theme_jm()
+
+snippet table1
+	${1:df} %>%
+		dplyr::select(
+			${2:group},
+			${3:var1},
+			${4:var2}
+		) %>%
+		tbl_summary(
+			by = ${2:group},
+			missing = "ifany",
+			type = list(
+				${3:var1} ~ "continuous"
+			),
+			label = list(
+				${3:var1} ~ "Variable 1",
+				${4:var2} ~ "Variable 2"
+			),
+			statistic = list(all_continuous() ~ "{median} ({p25}, {p75})")
+		) %>%
+		add_p() %>%
+		add_significance_stars() %>%
+		separate_p_footnotes() %>%
+		as_gt() %>%
+		gt::tab_options(table.font.size = 8, table.font.names = "Arial")
