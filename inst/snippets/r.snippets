@@ -1,0 +1,46 @@
+snippet corrplot
+	cor_matrix <- cor(${1:abundance_matrix}, use = "na.or.complete")
+	ggcorrplot(cor_matrix, type = "upper", hc.order = TRUE) +
+		scale_fill_viridis_c(name = "Pearson r") +
+		scale_x_discrete(position = "top") +
+		theme_jm() +
+		theme(axis.text.x = element_text(angle = 45, hjust = 0, size = 6),
+			axis.text.y = element_text(size = 6))
+
+snippet meansdplot
+	px <- rowMeans(${1:abundance_matrix}, na.rm = TRUE)
+	py <- apply(${1:abundance_matrix}, 1, sd, na.rm = TRUE)
+	rpx <- rank(px, na.last = FALSE, ties.method = "random")
+	n <- nrow(${1:abundance_matrix})
+
+	# Running median (vsn-style): sliding window of +/- 5% of rank range
+	dm <- 0.025
+	midpoints <- seq(dm, 1 - dm, by = dm)
+	rq_sds <- sapply(midpoints, function(mp) {
+		in_window <- (rpx / n >= mp - 2 * dm) & (rpx / n <= mp + 2 * dm)
+		median(py[in_window], na.rm = TRUE)
+	})
+	trend_df <- data.frame(x = midpoints * n, y = rq_sds)
+
+	ggplot(data.frame(px = rpx, py = py), aes(x = px, y = py)) +
+		geom_hex(bins = 50) +
+		scale_fill_gradient(name = "count", trans = "log",
+			labels = function(x) format(round(x), scientific = FALSE)) +
+		geom_line(data = trend_df, aes(x = x, y = y), colour = "red") +
+		labs(x = "rank(mean)", y = "sd", title = "Mean-SD plot") +
+		theme_jm()
+
+snippet abundrank
+	mean_abundance <- data.frame(
+		protein_ids = rownames(${1:abundance_matrix}),
+		mean_abundance = rowMeans(${1:abundance_matrix}, na.rm = TRUE)
+	) %>%
+		arrange(mean_abundance) %>%
+		mutate(rank = row_number())
+
+	ggplot(mean_abundance, aes(x = rank, y = mean_abundance)) +
+		geom_point(size = 0.5, alpha = 0.5) +
+		labs(x = "Protein rank",
+			y = expression(Mean~log[2]~abundance),
+			title = "Protein abundance rank") +
+		theme_jm()
