@@ -856,3 +856,206 @@ head({output_name})
 }
 
 
+#' Generate proteomics QC boilerplate code
+#'
+#' Outputs boilerplate R code for a standard proteomics QC section. The
+#' generated code covers identification counts, missing value analysis, data
+#' completeness, sample correlation, and within-group CV - all plotted without
+#' titles and using a consistent abundance matrix plus `sample_meta` object.
+#'
+#' @param data_name Character string specifying the name of the abundance
+#'   matrix variable (features as rows, samples as columns).
+#'   Default: `"abundance"`.
+#' @param metadata_name Character string specifying the name of the metadata
+#'   data frame variable. Must contain `id_col` and `group_var` columns.
+#'   Default: `"sample_meta"`.
+#' @param id_col Character string specifying the column in metadata containing
+#'   sample identifiers that match the column names of the data matrix.
+#'   Default: `"sample_id"`.
+#' @param group_var Character string specifying the metadata column used for
+#'   colouring plots. Default: `"group"`.
+#' @param precursor_data_name Character string giving the name of the
+#'   long-format precursor data frame (one row per precursor per sample),
+#'   from which per-sample precursor counts are aggregated. Must contain
+#'   columns `id_col` and `precursor_id_col`. Set to `NULL` to omit the
+#'   precursor count plot (e.g. when working from a pre-processed protein
+#'   matrix without precursor-level data). Default: `NULL`.
+#' @param precursor_id_col Character string specifying the column in
+#'   `precursor_data_name` that identifies individual precursors.
+#'   Default: `"Precursor.Id"`.
+#'
+#' @return Returns `invisible(NULL)`. The function prints code to the console
+#'   which can be copied into an analysis script.
+#'
+#' @details
+#' The generated code assumes the abundance matrix is already log2-transformed
+#' before the correlation and CV sections; add a log2 transformation step if
+#' needed. The CV is back-computed to the linear scale (`2^abundance`) so that
+#' it reflects the original intensity distribution.
+#'
+#' The missing value heatmap uses `pheatmap` and excludes proteins that are
+#' observed in every sample (i.e. have no missing values), so only informative
+#' rows are shown.
+#'
+#' The sample correlation heatmap uses `ggcorrplot` with Pearson correlation
+#' computed on pairwise complete observations.
+#'
+#' @export
+#'
+#' @examples
+#' # Generate QC boilerplate with default names, no precursor plot
+#' generate_qc_boilerplate()
+#'
+#' # Include precursor counts from a DIA-NN long-format table
+#' generate_qc_boilerplate(
+#'   precursor_data_name = "df_raw",
+#'   precursor_id_col    = "Precursor.Id"
+#' )
+generate_qc_boilerplate <- function(data_name              = "abundance",
+                                    metadata_name          = "sample_meta",
+                                    id_col                 = "sample_id",
+                                    group_var              = "group",
+                                    precursor_data_name    = NULL,
+                                    precursor_id_col       = "Precursor.Id") {
+
+  if (!is.null(precursor_data_name)) {
+    precursor_code <- glue::glue('
+# Precursor counts per sample
+precursor_counts <- {precursor_data_name} |>
+  dplyr::group_by({id_col}) |>
+  dplyr::summarise(n_precursors = dplyr::n_distinct({precursor_id_col}), .groups = "drop") |>
+  dplyr::left_join({metadata_name}, by = "{id_col}")
+
+ggplot(precursor_counts,
+       aes(x = factor({id_col}, levels = sample_order),
+           y = n_precursors, fill = {group_var})) +
+  geom_col() +
+  labs(x = "Sample", y = "Number of precursors") +
+  theme_jm() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+')
+  } else {
+    precursor_code <- ""
+  }
+
+  code <- glue::glue('
+library(ggplot2)
+library(dplyr)
+library(pheatmap)
+library(ggcorrplot)
+
+# Sample order: sort by group for consistent plot ordering
+sample_order <- {metadata_name}${id_col}[order({metadata_name}${group_var})]
+{precursor_code}
+# Proteins quantified per sample
+protein_counts <- data.frame(
+  {id_col}   = colnames({data_name}),
+  n_proteins = colSums(!is.na({data_name}))
+)
+protein_counts <- merge(protein_counts, {metadata_name}, by = "{id_col}")
+
+ggplot(protein_counts,
+       aes(x = factor({id_col}, levels = sample_order),
+           y = n_proteins, fill = {group_var})) +
+  geom_col() +
+  labs(x = "Sample", y = "Number of proteins") +
+  theme_jm() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Missing values per sample (%)
+n_features <- nrow({data_name})
+missing_df <- data.frame(
+  {id_col}    = colnames({data_name}),
+  pct_missing = colSums(is.na({data_name})) / n_features * 100
+)
+missing_df <- merge(missing_df, {metadata_name}, by = "{id_col}")
+missing_df${id_col} <- factor(missing_df${id_col}, levels = sample_order)
+
+ggplot(missing_df, aes(x = {id_col}, y = pct_missing, fill = {group_var})) +
+  geom_col() +
+  labs(x = "Sample", y = "Missing values (%)") +
+  theme_jm() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Missing value heatmap (proteins with >= 1 missing value only)
+is_missing   <- is.na({data_name})
+has_any_miss <- rowSums(is_missing) > 0
+mat_miss     <- is_missing[has_any_miss, ] * 1L
+mat_miss     <- mat_miss[order(rowSums(mat_miss), decreasing = TRUE), ]
+
+annotation_col_miss <- data.frame(
+  Group     = {metadata_name}${group_var},
+  row.names = {metadata_name}${id_col}
+)
+
+pheatmap(
+  mat_miss,
+  color          = c("grey92", "#08306B"),
+  breaks         = c(-0.5, 0.5, 1.5),
+  annotation_col = annotation_col_miss,
+  cluster_rows   = FALSE,
+  cluster_cols   = FALSE,
+  show_rownames  = FALSE,
+  fontsize_col   = 9,
+  legend_breaks  = c(0, 1),
+  legend_labels  = c("Observed", "Missing")
+)
+
+# Data completeness curve: proteins retained vs minimum % samples with data
+n_samples <- ncol({data_name})
+completeness_df <- data.frame(
+  min_samples = 0:n_samples,
+  n_proteins  = sapply(0:n_samples, function(m) {{
+    sum(rowSums(!is.na({data_name})) >= m)
+  }})
+)
+completeness_df$pct_samples <- completeness_df$min_samples / n_samples * 100
+
+ggplot(completeness_df, aes(x = pct_samples, y = n_proteins)) +
+  geom_line(colour = "#2166AC", linewidth = 0.9) +
+  geom_point(size = 2, colour = "#2166AC") +
+  scale_x_continuous(breaks = seq(0, 100, 25)) +
+  labs(
+    x = "Minimum completeness (% of samples with valid quantification)",
+    y = "Number of proteins"
+  ) +
+  theme_jm()
+
+# Sample correlation heatmap (Pearson, pairwise complete observations)
+cor_mat <- cor({data_name}, use = "pairwise.complete.obs", method = "pearson")
+
+ggcorrplot(
+  cor_mat,
+  method   = "square",
+  type     = "upper",
+  lab      = TRUE,
+  lab_size = 3
+) +
+  scale_fill_viridis_c(option = "viridis", name = "Pearson r")
+
+# Within-group CV (computed on linear scale per group)
+group_levels <- levels(as.factor({metadata_name}${group_var}))
+
+cv_list <- lapply(group_levels, function(grp) {{
+  cols <- {metadata_name}${id_col}[{metadata_name}${group_var} == grp]
+  mat  <- 2^{data_name}[, cols, drop = FALSE]
+  cv   <- apply(mat, 1, function(x) {{
+    x <- x[!is.na(x)]
+    if (length(x) < 2) NA_real_ else sd(x) / mean(x) * 100
+  }})
+  data.frame(cv = cv, {group_var} = grp, stringsAsFactors = FALSE)
+}})
+cv_df <- do.call(rbind, cv_list)
+cv_df <- cv_df[!is.na(cv_df$cv), ]
+cv_df${group_var} <- factor(cv_df${group_var}, levels = group_levels)
+
+ggplot(cv_df, aes(x = cv, colour = {group_var}, fill = {group_var})) +
+  geom_density(alpha = 0.15) +
+  labs(x = "CV (%)", y = "Density") +
+  theme_jm()
+')
+
+  cat(code)
+  return(invisible(NULL))
+}
+

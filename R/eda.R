@@ -387,3 +387,227 @@ plot_pc_metadata_associations <- function(association_results,
 
   return(p)
 }
+
+
+#' Test associations between variables and a binary group
+#'
+#' Tests associations between metadata variables and a binary group variable
+#' using point-biserial correlation (equivalent to Pearson r with a binary
+#' outcome). Two-level factors and character variables are automatically
+#' encoded as 0/1 integers.
+#'
+#' @param metadata Data frame containing metadata variables to test.
+#' @param vars_to_test Character vector of variable names from `metadata` to
+#'   test for association with the group variable.
+#' @param group_var Name of the binary group column in `metadata`.
+#'   Default: `"group"`.
+#' @param positive_level Character string specifying which level of `group_var`
+#'   is encoded as 1 (the "positive" or "case" class).
+#' @param min_complete Minimum number of complete (non-NA) observations
+#'   required to test a variable. Default: 5.
+#' @param p_adjust_method Method for p-value adjustment passed to
+#'   [stats::p.adjust()]. Default: `"BH"`.
+#'
+#' @return A data frame with columns:
+#' \describe{
+#'   \item{variable}{Name of the metadata variable}
+#'   \item{r}{Pearson correlation coefficient}
+#'   \item{r_lo}{Lower bound of the 95% confidence interval for r}
+#'   \item{r_hi}{Upper bound of the 95% confidence interval for r}
+#'   \item{p_value}{Raw p-value from [stats::cor.test()]}
+#'   \item{n_complete}{Number of complete observations used}
+#'   \item{adj_p_value}{Adjusted p-value using the specified method}
+#' }
+#' Rows are ordered by ascending p-value.
+#'
+#' @details
+#' Variables that are factors or character vectors with exactly two unique
+#' levels are automatically encoded as 0/1 integers (the second level
+#' alphabetically becomes 1). Variables with more than two levels are skipped
+#' with a message. Variables with zero variance or fewer than `min_complete`
+#' observations are also skipped.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' results <- test_variable_group_associations(
+#'   metadata       = sample_meta,
+#'   vars_to_test   = c("age", "sex", "bmi", "ejection_fraction"),
+#'   group_var      = "group",
+#'   positive_level = "heart_failure"
+#' )
+#' }
+#'
+#' @seealso [plot_variable_group_associations()] for visualising results
+#'
+#' @importFrom stats cor.test p.adjust var
+test_variable_group_associations <- function(metadata,
+                                              vars_to_test,
+                                              group_var      = "group",
+                                              positive_level,
+                                              min_complete   = 5,
+                                              p_adjust_method = "BH") {
+
+  if (!group_var %in% names(metadata)) {
+    stop("'", group_var, "' not found in metadata")
+  }
+  if (!positive_level %in% as.character(metadata[[group_var]])) {
+    stop("'", positive_level, "' not found in column '", group_var, "'")
+  }
+
+  group_binary <- as.integer(metadata[[group_var]] == positive_level)
+
+  vars_to_test <- vars_to_test[vars_to_test %in% names(metadata)]
+  if (length(vars_to_test) == 0) {
+    stop("None of the specified variables found in metadata")
+  }
+
+  results_list <- list()
+
+  for (var in vars_to_test) {
+    x <- metadata[[var]]
+
+    # Auto-encode two-level factors/characters as 0/1
+    if (is.factor(x) || is.character(x)) {
+      lvls <- sort(unique(x[!is.na(x)]))
+      if (length(lvls) == 2) {
+        message("Auto-encoding binary variable '", var, "': '", lvls[2], "' = 1")
+        x <- as.integer(x == lvls[2])
+      } else {
+        message("Skipping '", var, "': non-binary categorical (", length(lvls), " levels)")
+        next
+      }
+    }
+
+    complete  <- !is.na(x) & !is.na(group_binary)
+    n_complete <- sum(complete)
+
+    if (n_complete < min_complete) {
+      message("Skipping '", var, "': fewer than ", min_complete, " complete observations")
+      next
+    }
+    if (stats::var(x[complete]) == 0) {
+      message("Skipping '", var, "': zero variance")
+      next
+    }
+
+    result <- tryCatch({
+      ct <- stats::cor.test(x[complete], group_binary[complete], method = "pearson")
+      data.frame(
+        variable   = var,
+        r          = as.numeric(ct$estimate),
+        r_lo       = ct$conf.int[1],
+        r_hi       = ct$conf.int[2],
+        p_value    = ct$p.value,
+        n_complete = n_complete,
+        stringsAsFactors = FALSE
+      )
+    }, error = function(e) {
+      message("Skipping '", var, "': ", e$message)
+      NULL
+    })
+
+    if (!is.null(result)) {
+      results_list[[length(results_list) + 1]] <- result
+    }
+  }
+
+  if (length(results_list) == 0) {
+    warning("No associations could be tested")
+    return(data.frame())
+  }
+
+  results_df <- do.call(rbind, results_list)
+  results_df$adj_p_value <- stats::p.adjust(results_df$p_value, method = p_adjust_method)
+  results_df <- results_df[order(results_df$p_value), ]
+  rownames(results_df) <- NULL
+
+  return(results_df)
+}
+
+
+#' Plot variable-group associations as a forest plot
+#'
+#' Creates a forest plot of point-biserial correlations between metadata
+#' variables and a binary group, with 95% confidence intervals and optional
+#' significance colouring.
+#'
+#' @param association_results Data frame of results from
+#'   [test_variable_group_associations()].
+#' @param p_threshold Significance threshold for colouring associations
+#'   (default: 0.05).
+#' @param use_adjusted_p Logical. If `TRUE` (default), uses adjusted p-values
+#'   for determining significance. If `FALSE`, uses raw p-values.
+#' @param group_var Character string used in the x-axis label. Should match
+#'   the `group_var` argument passed to [test_variable_group_associations()].
+#'   Default: `"group"`.
+#' @param positive_level Character string for the x-axis label indicating
+#'   which group level was encoded as 1. If `NULL`, the label omits this
+#'   detail. Default: `NULL`.
+#'
+#' @return A ggplot2 object.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' results <- test_variable_group_associations(
+#'   metadata       = sample_meta,
+#'   vars_to_test   = c("age", "bmi", "ejection_fraction"),
+#'   group_var      = "group",
+#'   positive_level = "heart_failure"
+#' )
+#'
+#' plot_variable_group_associations(
+#'   results,
+#'   group_var      = "group",
+#'   positive_level = "heart_failure"
+#' )
+#' }
+#'
+#' @seealso [test_variable_group_associations()] for generating the input data
+#'
+#' @importFrom ggplot2 ggplot aes geom_point geom_errorbar geom_vline scale_colour_manual labs
+#' @importFrom rlang .data
+plot_variable_group_associations <- function(association_results,
+                                              p_threshold    = 0.05,
+                                              use_adjusted_p = TRUE,
+                                              group_var      = "group",
+                                              positive_level = NULL) {
+
+  if (nrow(association_results) == 0) {
+    warning("No association results to plot")
+    return(NULL)
+  }
+
+  p_col <- if (use_adjusted_p) "adj_p_value" else "p_value"
+
+  plot_data <- association_results
+  plot_data$significant <- plot_data[[p_col]] < p_threshold
+  plot_data$variable    <- reorder(plot_data$variable, plot_data$r)
+
+  x_label <- if (!is.null(positive_level)) {
+    paste0("Pearson r with ", group_var, " (", positive_level, " = 1)")
+  } else {
+    paste0("Pearson r with ", group_var)
+  }
+
+  legend_label <- paste0(if (use_adjusted_p) "adj. " else "", "p < ", p_threshold)
+
+  ggplot2::ggplot(plot_data,
+                  ggplot2::aes(x = .data$r, y = .data$variable,
+                               colour = .data$significant)) +
+    ggplot2::geom_point() +
+    ggplot2::geom_errorbar(
+      ggplot2::aes(xmin = .data$r_lo, xmax = .data$r_hi),
+      width = 0.2, orientation = "y"
+    ) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
+    ggplot2::scale_colour_manual(
+      values = c("FALSE" = "grey50", "TRUE" = "red"),
+      name   = legend_label
+    ) +
+    ggplot2::labs(x = x_label, y = NULL) +
+    theme_jm()
+}

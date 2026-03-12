@@ -46,7 +46,7 @@ snippet abundrank
 		theme_jm()
 
 snippet table1
-	${1:df} %>%
+	tbl <- ${1:df} %>%
 		dplyr::select(
 			${2:group},
 			${3:var1},
@@ -67,5 +67,15 @@ snippet table1
 		add_p() %>%
 		add_significance_stars() %>%
 		separate_p_footnotes() %>%
+		modify_spanning_header(all_stat_cols() ~ "**${5:Cohort label}**")
+
+	tbl %>%
 		as_gt() %>%
 		gt::tab_options(table.font.size = 8, table.font.names = "Arial")
+
+	dir.create(dirname(${6:output_path}), showWarnings = FALSE, recursive = TRUE)
+
+	tbl %>%
+		as_gt() %>%
+		gt::tab_options(table.font.size = 8, table.font.names = "Arial") %>%
+		gt::gtsave(file = ${6:output_path})
