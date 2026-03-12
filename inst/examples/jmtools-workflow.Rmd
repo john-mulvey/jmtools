@@ -31,7 +31,7 @@ covering:
 ## Setup
 
 ```{r load-packages}
-library(jmtools)
+#library(jmtools)
 library(dplyr)
 library(tidyr)
 library(tibble)
@@ -98,6 +98,150 @@ abundance <- abundance |>
 
 
 dim(abundance)
+```
+
+## Quality Control
+
+Generate the QC boilerplate. This example has no precursor-level data, so
+`precursor_data_name = NULL` omits that plot:
+
+```{r qc-boilerplate, eval=FALSE}
+generate_qc_boilerplate(
+  data_name           = "abundance",
+  metadata_name       = "sample_meta",
+  precursor_data_name = NULL
+)
+```
+
+Run the QC checks. The `abundance` matrix is already log2-transformed in this
+example; the CV section back-transforms to the linear scale internally.
+
+```{r qc-id-counts, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+
+sample_order <- sample_meta$sample_id[order(sample_meta$group)]
+
+# Proteins quantified per sample
+protein_counts <- data.frame(
+  sample_id  = colnames(abundance),
+  n_proteins = colSums(!is.na(abundance))
+)
+protein_counts <- merge(protein_counts, sample_meta, by = "sample_id")
+
+ggplot(protein_counts,
+       aes(x = factor(sample_id, levels = sample_order),
+           y = n_proteins, fill = group)) +
+  geom_col() +
+  labs(x = "Sample", y = "Number of proteins") +
+  theme_jm() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r qc-missing-bar, message=FALSE, warning=FALSE}
+n_features <- nrow(abundance)
+missing_df <- data.frame(
+  sample_id   = colnames(abundance),
+  pct_missing = colSums(is.na(abundance)) / n_features * 100
+)
+missing_df <- merge(missing_df, sample_meta, by = "sample_id")
+missing_df$sample_id <- factor(missing_df$sample_id, levels = sample_order)
+
+ggplot(missing_df, aes(x = sample_id, y = pct_missing, fill = group)) +
+  geom_col() +
+  labs(x = "Sample", y = "Missing values (%)") +
+  theme_jm() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r qc-missing-heatmap, message=FALSE, warning=FALSE, fig.height=6}
+library(pheatmap)
+
+is_missing   <- is.na(abundance)
+has_any_miss <- rowSums(is_missing) > 0
+
+if (sum(has_any_miss) > 0) {
+  mat_miss <- is_missing[has_any_miss, ] * 1L
+  mat_miss <- mat_miss[order(rowSums(mat_miss), decreasing = TRUE), ]
+
+  annotation_col_miss <- data.frame(
+    Group     = sample_meta$group,
+    row.names = sample_meta$sample_id
+  )
+
+  pheatmap(
+    mat_miss,
+    color          = c("grey92", "#08306B"),
+    breaks         = c(-0.5, 0.5, 1.5),
+    annotation_col = annotation_col_miss,
+    cluster_rows   = FALSE,
+    cluster_cols   = FALSE,
+    show_rownames  = FALSE,
+    fontsize_col   = 9,
+    legend_breaks  = c(0, 1),
+    legend_labels  = c("Observed", "Missing")
+  )
+} else {
+  message("No missing values in this dataset - heatmap omitted.")
+}
+```
+
+```{r qc-completeness, message=FALSE, warning=FALSE}
+n_samples <- ncol(abundance)
+completeness_df <- data.frame(
+  min_samples = 0:n_samples,
+  n_proteins  = sapply(0:n_samples, function(m) {
+    sum(rowSums(!is.na(abundance)) >= m)
+  })
+)
+completeness_df$pct_samples <- completeness_df$min_samples / n_samples * 100
+
+ggplot(completeness_df, aes(x = pct_samples, y = n_proteins)) +
+  geom_line(colour = "#2166AC", linewidth = 0.9) +
+  geom_point(size = 2, colour = "#2166AC") +
+  scale_x_continuous(breaks = seq(0, 100, 25)) +
+  labs(
+    x = "Minimum completeness (% of samples with valid quantification)",
+    y = "Number of proteins"
+  ) +
+  theme_jm()
+```
+
+```{r qc-correlation, message=FALSE, warning=FALSE}
+library(ggcorrplot)
+
+cor_mat <- cor(abundance, use = "pairwise.complete.obs", method = "pearson")
+
+ggcorrplot(
+  cor_mat,
+  method   = "square",
+  type     = "upper",
+  lab      = TRUE,
+  lab_size = 3
+) +
+  scale_fill_viridis_c(option = "viridis", name = "Pearson r")
+```
+
+```{r qc-cv, message=FALSE, warning=FALSE}
+group_levels <- levels(as.factor(sample_meta$group))
+
+cv_list <- lapply(group_levels, function(grp) {
+  cols <- sample_meta$sample_id[sample_meta$group == grp]
+  mat  <- 2^abundance[, cols, drop = FALSE]
+  cv   <- apply(mat, 1, function(x) {
+    x <- x[!is.na(x)]
+    if (length(x) < 2) NA_real_ else sd(x) / mean(x) * 100
+  })
+  data.frame(cv = cv, group = grp, stringsAsFactors = FALSE)
+})
+cv_df <- do.call(rbind, cv_list)
+cv_df <- cv_df[!is.na(cv_df$cv), ]
+cv_df$group <- factor(cv_df$group, levels = group_levels)
+
+ggplot(cv_df, aes(x = cv, colour = group, fill = group)) +
+  geom_density(alpha = 0.15) +
+  labs(x = "CV (%)", y = "Density") +
+  theme_jm()
 ```
 
 ## Principal Component Analysis
@@ -212,6 +356,32 @@ plot_pc_metadata_associations(
   pc_associations,
   show_all = TRUE,
   title = "PC-Metadata Associations"
+)
+```
+
+### Confounding Analysis
+
+Quantify collinearity between clinical variables and group membership using
+point-biserial correlation. Two-level factors (e.g. Sex) are automatically
+encoded as 0/1. This informs whether covariates are likely to confound a
+limma model.
+
+```{r confounding-analysis, message=FALSE, warning=FALSE}
+confound_results <- test_variable_group_associations(
+  metadata       = sample_meta,
+  vars_to_test   = c("Sex", "Age", "BMI", "Ejection fraction (%)"),
+  group_var      = "group",
+  positive_level = "heart_failure"
+)
+
+confound_results
+```
+
+```{r confounding-plot, message=FALSE, warning=FALSE}
+plot_variable_group_associations(
+  confound_results,
+  group_var      = "group",
+  positive_level = "heart_failure"
 )
 ```
 
