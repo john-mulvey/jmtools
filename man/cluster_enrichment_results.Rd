@@ -103,10 +103,10 @@ clustered_ora <- cluster_enrichment_results(
 head(clustered_gsea[, c("gene_set", "nes", "cluster", "cluster_label")])
 
 # Plot as bar chart
-plot_enrichment_bars(clustered_gsea)
+plot_clustered_enrichment_bars(clustered_gsea)
 }
 
 }
 \seealso{
-\code{\link[=plot_enrichment_bars]{plot_enrichment_bars()}} for plotting clustered results
+\code{\link[=plot_clustered_enrichment_bars]{plot_clustered_enrichment_bars()}} for plotting clustered results
 }

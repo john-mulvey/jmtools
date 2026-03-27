@@ -7,11 +7,12 @@
 plot_gsea_dots(
   gsea_results,
   gene_set_col = "gene_set",
-  nes_col = "nes",
+  score_col = "nes",
   pval_col = "p_value",
   adj_pval_col = "adj_p_value",
   n_top = 20,
   adj_p_threshold = 0.05,
+  x_label = "Normalised Enrichment Score (NES)",
   title = "GSEA Results",
   colours = c(Enriched = "firebrick", Depleted = "steelblue"),
   wrap_labels = 30
@@ -24,8 +25,8 @@ cleaned column names (e.g., output from \code{generate_gsea_boilerplate()}).}
 \item{gene_set_col}{Character string specifying the column containing gene
 set names. Default: "gene_set".}
 
-\item{nes_col}{Character string specifying the column containing Normalised
-Enrichment Scores. Default: "nes".}
+\item{score_col}{Character string specifying the column containing enrichment
+scores. Default: \code{"nes"}. Use \code{"enrichment_score"} for ORA results.}
 
 \item{pval_col}{Character string specifying the column containing p-values
 for the size aesthetic. Default: "p_value".}
@@ -38,6 +39,8 @@ depleted). Default: 20 (i.e., up to 10 enriched and 10 depleted).}
 
 \item{adj_p_threshold}{Adjusted p-value threshold for filtering gene sets.
 Default: 0.05.}
+
+\item{x_label}{X-axis label. Default: \code{"Normalised Enrichment Score (NES)"}.}
 
 \item{title}{Optional plot title. Default: "GSEA Results".}
 

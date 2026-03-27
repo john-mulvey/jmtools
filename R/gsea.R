@@ -111,10 +111,10 @@ overlap_coefficient <- function(set1, set2) {
 #' head(clustered_gsea[, c("gene_set", "nes", "cluster", "cluster_label")])
 #'
 #' # Plot as bar chart
-#' plot_enrichment_bars(clustered_gsea)
+#' plot_clustered_enrichment_bars(clustered_gsea)
 #' }
 #'
-#' @seealso [plot_enrichment_bars()] for plotting clustered results
+#' @seealso [plot_clustered_enrichment_bars()] for plotting clustered results
 cluster_enrichment_results <- function(enrichment_results,
                                   gene_set_col = "gene_set",
                                   score_col = "nes",
@@ -247,7 +247,7 @@ cluster_enrichment_results <- function(enrichment_results,
 #' \dontrun{
 #' # GSEA workflow
 #' clustered_gsea <- cluster_enrichment_results(gsea_results)
-#' plot_enrichment_bars(clustered_gsea)
+#' plot_clustered_enrichment_bars(clustered_gsea)
 #'
 #' # ORA workflow
 #' clustered_ora <- cluster_enrichment_results(
@@ -256,7 +256,7 @@ cluster_enrichment_results <- function(enrichment_results,
 #'   genes_col = "overlap_genes",
 #'   n_genes_col = "n_gene_set"
 #' )
-#' plot_enrichment_bars(
+#' plot_clustered_enrichment_bars(
 #'   clustered_ora,
 #'   score_col = "enrichment_score",
 #'   x_label = "Enrichment Score (log2 fold enrichment)"
@@ -264,12 +264,12 @@ cluster_enrichment_results <- function(enrichment_results,
 #' }
 #'
 #' @seealso [cluster_enrichment_results()] for clustering enrichment results,
-#'   [plot_gsea_dots()] for plotting unclustered GSEA results
+#'   [plot_gsea_bars()] for unclustered bar chart, [plot_gsea_dots()] for dot plot
 #'
 #' @importFrom ggplot2 ggplot aes geom_col geom_point geom_vline scale_fill_manual position_jitter facet_grid labs theme element_text
 #' @importFrom rlang .data
 #' @importFrom stats sd setNames
-plot_enrichment_bars <- function(clustered_results,
+plot_clustered_enrichment_bars <- function(clustered_results,
                             score_col = "nes",
                             n_top = 20,
                             title = "Enrichment Results (Clustered)",
@@ -430,8 +430,8 @@ plot_enrichment_bars <- function(clustered_results,
 #'   cleaned column names (e.g., output from `generate_gsea_boilerplate()`).
 #' @param gene_set_col Character string specifying the column containing gene
 #'   set names. Default: "gene_set".
-#' @param nes_col Character string specifying the column containing Normalised
-#'   Enrichment Scores. Default: "nes".
+#' @param score_col Character string specifying the column containing enrichment
+#'   scores. Default: `"nes"`. Use `"enrichment_score"` for ORA results.
 #' @param pval_col Character string specifying the column containing p-values
 #'   for the size aesthetic. Default: "p_value".
 #' @param adj_pval_col Character string specifying the column containing
@@ -440,6 +440,7 @@ plot_enrichment_bars <- function(clustered_results,
 #'   depleted). Default: 20 (i.e., up to 10 enriched and 10 depleted).
 #' @param adj_p_threshold Adjusted p-value threshold for filtering gene sets.
 #'   Default: 0.05.
+#' @param x_label X-axis label. Default: `"Normalised Enrichment Score (NES)"`.
 #' @param title Optional plot title. Default: "GSEA Results".
 #' @param colours Named vector of colours for enriched and depleted gene sets.
 #'   Default: `c(Enriched = "firebrick", Depleted = "steelblue")`.
@@ -489,28 +490,21 @@ plot_enrichment_bars <- function(clustered_results,
 #' @importFrom rlang .data
 #' @importFrom utils head
 plot_gsea_dots <- function(gsea_results,
-                               gene_set_col = "gene_set",
-                               nes_col = "nes",
-                               pval_col = "p_value",
-                               adj_pval_col = "adj_p_value",
-                               n_top = 20,
+                               gene_set_col    = "gene_set",
+                               score_col       = "nes",
+                               pval_col        = "p_value",
+                               adj_pval_col    = "adj_p_value",
+                               n_top           = 20,
                                adj_p_threshold = 0.05,
-                               title = "GSEA Results",
-                               colours = c(Enriched = "firebrick", Depleted = "steelblue"),
-                               wrap_labels = 30) {
+                               x_label         = "Normalised Enrichment Score (NES)",
+                               title           = "GSEA Results",
+                               colours         = c(Enriched = "firebrick", Depleted = "steelblue"),
+                               wrap_labels     = 30) {
 
-  # Validate inputs
-  if (!gene_set_col %in% names(gsea_results)) {
-    stop("Column '", gene_set_col, "' not found in gsea_results")
-  }
-  if (!nes_col %in% names(gsea_results)) {
-    stop("Column '", nes_col, "' not found in gsea_results")
-  }
-  if (!pval_col %in% names(gsea_results)) {
-    stop("Column '", pval_col, "' not found in gsea_results")
-  }
-  if (!adj_pval_col %in% names(gsea_results)) {
-    stop("Column '", adj_pval_col, "' not found in gsea_results")
+  missing_cols <- setdiff(c(gene_set_col, score_col, pval_col, adj_pval_col),
+                          names(gsea_results))
+  if (length(missing_cols) > 0) {
+    stop("Missing columns in gsea_results: ", paste(missing_cols, collapse = ", "))
   }
 
   # Filter by significance
@@ -522,28 +516,20 @@ plot_gsea_dots <- function(gsea_results,
   }
 
   # Add direction column
-  plot_data$direction <- ifelse(
-    plot_data[[nes_col]] > 0,
-    "Enriched",
-    "Depleted"
+  plot_data$direction <- factor(
+    ifelse(plot_data[[score_col]] > 0, "Enriched", "Depleted"),
+    levels = c("Depleted", "Enriched")
   )
-  plot_data$direction <- factor(plot_data$direction, levels = c("Depleted", "Enriched"))
 
   # Select top gene sets (split between enriched and depleted)
+  n_each   <- ceiling(n_top / 2)
   enriched <- plot_data[plot_data$direction == "Enriched", ]
   depleted <- plot_data[plot_data$direction == "Depleted", ]
 
-  n_each <- ceiling(n_top / 2)
-
-  if (nrow(enriched) > 0) {
-    enriched <- enriched[order(-abs(enriched[[nes_col]])), ]
-    enriched <- head(enriched, n_each)
-  }
-
-  if (nrow(depleted) > 0) {
-    depleted <- depleted[order(-abs(depleted[[nes_col]])), ]
-    depleted <- head(depleted, n_each)
-  }
+  if (nrow(enriched) > 0)
+    enriched <- head(enriched[order(-abs(enriched[[score_col]])), ], n_each)
+  if (nrow(depleted) > 0)
+    depleted <- head(depleted[order(-abs(depleted[[score_col]])), ], n_each)
 
   plot_data <- rbind(enriched, depleted)
 
@@ -560,23 +546,19 @@ plot_gsea_dots <- function(gsea_results,
     )
   }
 
-  # Order gene sets by NES (descending so most positive at top of plot)
-  plot_data <- plot_data[order(-plot_data[[nes_col]]), ]
-  plot_data[[gene_set_col]] <- factor(
-    plot_data[[gene_set_col]],
-    levels = rev(unique(plot_data[[gene_set_col]]))
-  )
+  # Order by score descending (most positive at top)
+  plot_data <- plot_data[order(-plot_data[[score_col]]), ]
+  plot_data[[gene_set_col]] <- factor(plot_data[[gene_set_col]],
+                                      levels = rev(unique(plot_data[[gene_set_col]])))
 
-  # Calculate -log10(p-value) for size
   plot_data$neg_log10_p <- -log10(plot_data[[pval_col]])
 
-  # Create plot
   p <- ggplot2::ggplot(
     plot_data,
     ggplot2::aes(
-      x = .data[[nes_col]],
-      y = .data[[gene_set_col]],
-      size = .data$neg_log10_p,
+      x      = .data[[score_col]],
+      y      = .data[[gene_set_col]],
+      size   = .data$neg_log10_p,
       colour = .data$direction
     )
   ) +
@@ -584,14 +566,132 @@ plot_gsea_dots <- function(gsea_results,
     ggplot2::geom_point() +
     ggplot2::scale_colour_manual(values = colours, guide = "none") +
     ggplot2::scale_size_continuous(name = expression(-log[10] ~ p - value)) +
-    ggplot2::labs(
-      x = "Normalised Enrichment Score (NES)",
-      y = NULL,
-      title = title
-    ) +
+    ggplot2::labs(x = x_label, y = NULL, title = title) +
     theme_jm()
 
   return(p)
+}
+
+
+#' Plot enrichment results as a bar chart
+#'
+#' Creates a horizontal bar chart of enrichment scores from [fgsea::fgsea()]
+#' or [fgsea::fora()] results. Bars are coloured by a continuous blue-white-red
+#' gradient and annotated with significance stars. Works with both GSEA and ORA
+#' output, and with cell type or pathway-level results.
+#'
+#' @param enrichment_results Data frame of enrichment results, e.g. from
+#'   the GSEA/ORA boilerplate functions.
+#' @param gene_set_col Column containing gene set or cell type labels. Default:
+#'   `"gene_set"`. Use `"cell_type"` for cell type enrichment results.
+#' @param score_col Column containing the enrichment score. Default: `"nes"`
+#'   (GSEA). Use `"enrichment_score"` for ORA results.
+#' @param adj_pval_col Column containing adjusted p-values for significance
+#'   annotation. Default: `"adj_p_value"`.
+#' @param n_top Maximum number of rows to show, split evenly between enriched
+#'   and depleted. `NULL` (default) shows all rows.
+#' @param adj_p_threshold Adjusted p-value threshold for filtering. `NULL`
+#'   (default) shows all rows regardless of significance.
+#' @param x_label X-axis label. Default: `"Enrichment Score"`.
+#' @param title Plot title. Default: `"Enrichment Results"`.
+#' @param wrap_labels Number of characters at which to wrap long labels. `NULL`
+#'   (default) disables wrapping.
+#'
+#' @return A ggplot2 object.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Pathway GSEA - show only significant, top 20
+#' plot_gsea_bars(gsea_results, n_top = 20, adj_p_threshold = 0.05,
+#'                wrap_labels = 40,
+#'                x_label = "Normalised Enrichment Score (NES)")
+#' }
+#'
+#' @seealso [plot_gsea_dots()], [plot_clustered_enrichment_bars()],
+#'   [filter_marker_genes()]
+#'
+#' @importFrom ggplot2 geom_col geom_text geom_vline scale_fill_gradient2 labs
+#' @importFrom rlang .data
+plot_gsea_bars <- function(enrichment_results,
+                           gene_set_col    = "gene_set",
+                           score_col       = "nes",
+                           adj_pval_col    = "adj_p_value",
+                           n_top           = NULL,
+                           adj_p_threshold = NULL,
+                           x_label         = "Enrichment Score",
+                           title           = "Enrichment Results",
+                           wrap_labels     = NULL) {
+
+  missing_cols <- setdiff(c(gene_set_col, score_col, adj_pval_col),
+                          names(enrichment_results))
+  if (length(missing_cols) > 0) {
+    stop("Missing columns in enrichment_results: ", paste(missing_cols, collapse = ", "))
+  }
+
+  plot_data <- as.data.frame(enrichment_results)
+
+  if (!is.null(adj_p_threshold)) {
+    plot_data <- plot_data[plot_data[[adj_pval_col]] < adj_p_threshold, ]
+    if (nrow(plot_data) == 0) {
+      warning("No gene sets meet the significance threshold (adj_p < ", adj_p_threshold, ")")
+      return(NULL)
+    }
+  }
+
+  if (!is.null(n_top)) {
+    n_each   <- ceiling(n_top / 2)
+    enriched <- plot_data[plot_data[[score_col]] > 0, ]
+    depleted <- plot_data[plot_data[[score_col]] <= 0, ]
+    if (nrow(enriched) > 0)
+      enriched <- head(enriched[order(-enriched[[score_col]]), ], n_each)
+    if (nrow(depleted) > 0)
+      depleted <- head(depleted[order(depleted[[score_col]]), ], n_each)
+    plot_data <- rbind(enriched, depleted)
+  }
+
+  plot_data$sig_label <- ifelse(
+    plot_data[[adj_pval_col]] < 0.001, "***",
+    ifelse(plot_data[[adj_pval_col]] < 0.01, "**",
+           ifelse(plot_data[[adj_pval_col]] < 0.05, "*", ""))
+  )
+
+  if (!is.null(wrap_labels)) {
+    plot_data[[gene_set_col]] <- sapply(
+      plot_data[[gene_set_col]],
+      function(x) paste(strwrap(x, width = wrap_labels), collapse = "\n")
+    )
+  }
+
+  plot_data[[gene_set_col]] <- factor(
+    plot_data[[gene_set_col]],
+    levels = plot_data[[gene_set_col]][order(plot_data[[score_col]])]
+  )
+
+  ggplot2::ggplot(plot_data, ggplot2::aes(
+    x    = .data[[score_col]],
+    y    = .data[[gene_set_col]],
+    fill = .data[[score_col]]
+  )) +
+    ggplot2::geom_col() +
+    ggplot2::geom_text(
+      ggplot2::aes(
+        label = .data$sig_label,
+        x     = .data[[score_col]] + sign(.data[[score_col]]) * 0.05
+      ),
+      size = 4, vjust = 0.75
+    ) +
+    ggplot2::scale_fill_gradient2(
+      low      = "#2166ac",
+      mid      = "white",
+      high     = "#d73027",
+      midpoint = 0,
+      guide    = "none"
+    ) +
+    ggplot2::geom_vline(xintercept = 0, linewidth = 0.4) +
+    ggplot2::labs(x = x_label, y = NULL, title = title) +
+    theme_jm()
 }
 
 
@@ -704,7 +804,7 @@ plot_gsea_dots <- function(gsea_results,
 #' head(clusters)
 #' }
 #'
-#' @seealso [plot_gsea_dots()] for a simpler dot plot visualisation
+#' @seealso [plot_gsea_dots()], [plot_gsea_bars()] for simpler visualisations
 #'
 #' @importFrom ggplot2 aes unit scale_fill_distiller scale_size_continuous labs guides guide_legend theme element_blank element_rect
 #' @importFrom rlang .data

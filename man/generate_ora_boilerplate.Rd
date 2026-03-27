@@ -65,7 +65,7 @@ with plotting functions
 
 The output includes an \code{enrichment_score} column (log2 of the odds ratio)
 to allow use with the same clustering and plotting functions as GSEA results
-(\code{\link[=cluster_enrichment_results]{cluster_enrichment_results()}}, \code{\link[=plot_enrichment_bars]{plot_enrichment_bars()}}).
+(\code{\link[=cluster_enrichment_results]{cluster_enrichment_results()}}, \code{\link[=plot_clustered_enrichment_bars]{plot_clustered_enrichment_bars()}}).
 }
 \section{msigdbr Categories}{
 

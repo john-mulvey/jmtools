@@ -154,5 +154,5 @@ head(clusters)
 
 }
 \seealso{
-\code{\link[=plot_gsea_dots]{plot_gsea_dots()}} for a simpler dot plot visualisation
+\code{\link[=plot_gsea_dots]{plot_gsea_dots()}}, \code{\link[=plot_gsea_bars]{plot_gsea_bars()}} for simpler visualisations
 }

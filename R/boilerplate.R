@@ -760,7 +760,7 @@ head({output_name})
 #'
 #' The output includes an `enrichment_score` column (log2 of the odds ratio)
 #' to allow use with the same clustering and plotting functions as GSEA results
-#' ([cluster_enrichment_results()], [plot_enrichment_bars()]).
+#' ([cluster_enrichment_results()], [plot_clustered_enrichment_bars()]).
 #'
 #' @section msigdbr Categories:
 #' \describe{

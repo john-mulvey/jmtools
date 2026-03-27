@@ -570,6 +570,7 @@ test_variable_group_associations <- function(metadata,
 #'
 #' @importFrom ggplot2 ggplot aes geom_point geom_errorbar geom_vline scale_colour_manual labs
 #' @importFrom rlang .data
+#' @importFrom stats reorder
 plot_variable_group_associations <- function(association_results,
                                               p_threshold    = 0.05,
                                               use_adjusted_p = TRUE,
