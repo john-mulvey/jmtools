@@ -27,6 +27,7 @@ covering:
 3. Differential expression analysis with limma
 4. Gene Set Enrichment Analysis (GSEA)
 5. Over-Representation Analysis (ORA)
+6. Cell type enrichment analysis
 
 ## Setup
 
@@ -652,7 +653,7 @@ if (!is.null(clustered_gsea)) {
 ```{r gsea-bars, fig.height=5, fig.width=20}
 # Plot clustered results
 if (!is.null(clustered_gsea)) {
-  plot_enrichment_bars(
+  plot_clustered_enrichment_bars(
     clustered_gsea,
     score_col = "nes",
     n_top = 15,
@@ -784,7 +785,7 @@ if (!is.null(clustered_ora)) {
 
 ```{r ora-bars, fig.height=4}
 if (!is.null(clustered_ora)) {
-  plot_enrichment_bars(
+  plot_clustered_enrichment_bars(
     clustered_ora,
     score_col = "enrichment_score",
     n_top = 10,
@@ -792,6 +793,113 @@ if (!is.null(clustered_ora)) {
     x_label = "Enrichment Score (log2 fold enrichment)"
   )
 }
+```
+
+## Cell Type Enrichment Analysis
+
+Cell type enrichment asks whether proteins that are differentially abundant
+between groups tend to be markers of a particular cell type, as defined by
+snRNAseq data. Here we use the Human Heart Cell Atlas v2 Level 1 marker genes
+and test for enrichment using GSEA against the limma t-statistic ranking.
+
+> **Note:** The marker gene file bundled with this package
+> (`example_marker_genes.csv`) is a **trimmed example dataset** - the top 20
+> markers per cell type by AUC from the Heart Cell Atlas v2, included solely
+> to make this vignette runnable. It is not suitable for real analysis. See
+> `?filter_marker_genes` for the path to the full dataset on the group drive,
+> and `inst/extdata/generate_marker_genes_example.R` for how this file was
+> generated.
+
+### Load and Filter Marker Genes
+
+```{r celltype-load}
+marker_genes_raw <- read.csv(
+  system.file("extdata", "example_marker_genes.csv", package = "jmtools"),
+  stringsAsFactors = FALSE
+)
+
+markers_filtered <- filter_marker_genes(marker_genes_raw)
+```
+
+### Effect Size Distribution by Cell Type
+
+Visualise the distribution of log2 fold changes across each cell type's marker
+proteins. Cell types whose markers are systematically up- or down-regulated
+will stand out from the others:
+
+```{r celltype-effect-sizes, fig.height=5}
+plot_celltype_effect_sizes(
+  markers_filtered,
+  limma_results_heart_failure_vs_control,
+  effect_col = "log_fc",
+  title      = "Effect size distribution by cell type marker set"
+)
+```
+
+### Cell Type Marker Dot Plot
+
+Confirm that the top markers used as gene sets show the expected cell-type-
+specific expression patterns in the snRNAseq reference:
+
+```{r celltype-dotplot, fig.height=6, fig.width=10}
+top_genes <- tapply(
+  markers_filtered$gene,
+  markers_filtered$cluster,
+  function(g) head(g, 5)
+)
+
+plot_celltype_dotplot(marker_genes_raw, genes = unique(unlist(top_genes)))
+```
+
+### Cell Type GSEA
+
+Build a named gene set list from the filtered markers (one set per cell type)
+and run GSEA directly with `fgsea`, using the limma t-statistic as the ranking:
+
+```{r celltype-gsea}
+library(fgsea)
+
+celltype_gene_sets <- split(markers_filtered$gene, markers_filtered$cluster)
+
+ranks_celltype <- limma_results_heart_failure_vs_control |>
+  dplyr::filter(!is.na(t), !is.na(gene_symbol)) |>
+  dplyr::group_by(gene_symbol) |>
+  dplyr::slice_max(abs(t), n = 1, with_ties = FALSE) |>
+  dplyr::ungroup() |>
+  (\(d) setNames(d$t, d$gene_symbol))() |>
+  sort(decreasing = TRUE)
+
+set.seed(42)
+gsea_celltype <- fgsea(
+  pathways = celltype_gene_sets,
+  stats    = ranks_celltype,
+  minSize  = 5,
+  maxSize  = 500
+) |>
+  tibble::as_tibble() |>
+  dplyr::rename(
+    cell_type    = pathway,
+    p_value      = pval,
+    adj_p_value  = padj,
+    nes          = NES,
+    n_genes      = size,
+    leading_edge = leadingEdge
+  ) |>
+  dplyr::arrange(p_value)
+
+gsea_celltype
+```
+
+### Plot Cell Type Enrichment
+
+```{r celltype-bars, fig.height=5}
+plot_gsea_bars(
+  gsea_celltype,
+  gene_set_col = "cell_type",
+  score_col    = "nes",
+  x_label      = "Normalised Enrichment Score (NES)",
+  title        = "Cell Type Enrichment (GSEA)"
+)
 ```
 
 ## Saving Publication-Ready Figures
