@@ -16,6 +16,7 @@ Imports:
     scales,
     stringr
 Suggests:
+    cluster,
     dplyr,
     factoextra,
     FactoMineR,
@@ -28,6 +29,7 @@ Suggests:
     janitor,
     knitr,
     limma,
+    pheatmap,
     msigdbr,
     rmarkdown,
     tibble,

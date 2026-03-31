@@ -612,3 +612,95 @@ plot_variable_group_associations <- function(association_results,
     ggplot2::labs(x = x_label, y = NULL) +
     theme_jm()
 }
+
+
+#' Clustered heatmap with NA-tolerant distance computation
+#'
+#' A thin wrapper around [pheatmap::pheatmap()] for the specific case where the
+#' abundance matrix contains NA values and you want to cluster rows and/or
+#' columns. In all other cases, use [pheatmap::pheatmap()] directly.
+#'
+#' Standard `pheatmap` fails when clustering rows or columns that contain NAs
+#' because `hclust` cannot handle NA distances. This function computes pairwise
+#' Euclidean distances using [cluster::daisy()], which uses only shared non-NA
+#' values for each pair, then passes pre-computed `hclust` objects to
+#' `pheatmap`. NA cells are rendered in a distinct colour (default white).
+#'
+#' @param mat Numeric matrix with features as rows and samples as columns.
+#'   May contain NA values.
+#' @param scale_rows Logical. If `TRUE` (default), rows are z-score scaled
+#'   before computing distances and plotting. Scaling uses [base::scale()] which
+#'   ignores NAs. The heatmap is then drawn with `scale = "none"` so that
+#'   clustering and display are consistent.
+#' @param clustering_method Agglomeration method passed to [stats::hclust()].
+#'   Default: `"ward.D2"`.
+#' @param cluster_rows Logical. Whether to cluster rows. Default: `TRUE`.
+#' @param cluster_cols Logical. Whether to cluster columns. Default: `TRUE`.
+#' @param na_col Colour used for NA cells. Default: `"white"`.
+#' @param ... Additional arguments passed to [pheatmap::pheatmap()], e.g.
+#'   `annotation_col`, `show_rownames`, `main`, `fontsize_col`.
+#'
+#' @return Invisibly returns the `pheatmap` object.
+#'
+#' @details
+#' When two rows (or columns) share no non-NA values, `daisy` returns NA for
+#' that pair. These NA distances are replaced with the maximum observed distance
+#' so that `hclust` can proceed; such features are placed at the periphery of
+#' the dendrogram.
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' pheatmap_clustered_with_na(
+#'   abundance_filt[sig_proteins, ],
+#'   annotation_col = sample_annotation,
+#'   show_rownames = FALSE,
+#'   main = "Differentially abundant proteins"
+#' )
+#' }
+#'
+#' @importFrom stats hclust
+pheatmap_clustered_with_na <- function(mat,
+                                       scale_rows = TRUE,
+                                       clustering_method = "ward.D2",
+                                       cluster_rows = TRUE,
+                                       cluster_cols = TRUE,
+                                       na_col = "white",
+                                       ...) {
+
+  if (!requireNamespace("pheatmap", quietly = TRUE)) {
+    stop("Package 'pheatmap' is required. Install it with install.packages('pheatmap')")
+  }
+  if (!requireNamespace("cluster", quietly = TRUE)) {
+    stop("Package 'cluster' is required. Install it with install.packages('cluster')")
+  }
+
+  if (scale_rows) {
+    mat <- t(scale(t(mat)))
+  }
+
+  na_tolerant_hclust <- function(m, method) {
+    d <- cluster::daisy(m, metric = "euclidean")
+    if (any(is.na(d))) {
+      d[is.na(d)] <- max(d, na.rm = TRUE)
+    }
+    stats::hclust(d, method = method)
+  }
+
+  if (cluster_rows) {
+    cluster_rows <- na_tolerant_hclust(mat, clustering_method)
+  }
+  if (cluster_cols) {
+    cluster_cols <- na_tolerant_hclust(t(mat), clustering_method)
+  }
+
+  pheatmap::pheatmap(
+    mat,
+    scale = "none",
+    cluster_rows = cluster_rows,
+    cluster_cols = cluster_cols,
+    na_col = na_col,
+    ...
+  )
+}
