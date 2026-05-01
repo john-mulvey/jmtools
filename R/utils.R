@@ -10,12 +10,14 @@
 #' @param path Path to the .Rmd file
 #' @param envir Environment in which to evaluate the functions (default: parent.frame())
 #'
-#' @return Invisibly returns the extracted function code as a character vector
+#' @return Invisibly returns the deparsed function definitions as a character vector
 #'
 #' @details
-#' The function parses R code chunks (delimited by ```\{r\} and ```) and extracts
-#' complete function definitions by tracking brace depth. Only lines that are
-#' part of function definitions (identified by `<- function`) are evaluated.
+#' Extracts all R code chunks (delimited by ```\{r\} and ```), parses them with
+#' R's parser, and evaluates only the top-level expressions that are function
+#' assignments (`name <- function(...) {...}` or `name = function(...) {...}`).
+#' Because parsing is done by R's parser rather than by tracking braces in raw
+#' text, comments and strings containing `\{` or `\}` are handled correctly.
 #'
 #' @export
 #'
@@ -28,64 +30,48 @@
 #' my_env <- new.env()
 #' source_functions_from_rmd("analysis/utils.Rmd", envir = my_env)
 #' }
-#'
-#' @importFrom stringr str_count
 source_functions_from_rmd <- function(path, envir = parent.frame()) {
 
-  # Read the file as text
   lines <- readLines(path, warn = FALSE)
 
-  # Extract all R code chunks between ```{r} and ```
   chunk_starts <- grep("^```\\{r", lines)
   chunk_ends   <- grep("^```$", lines)
-
-  # Match starts/ends (in order)
   if (length(chunk_starts) != length(chunk_ends)) {
     stop("Mismatched code chunk delimiters in ", path)
   }
 
-  # Concatenate all code chunks
-  chunks <- Map(function(s, e) lines[(s + 1):(e - 1)], chunk_starts, chunk_ends)
-  code <- unlist(chunks)
+  # Concatenate all chunk bodies into one parseable text block. Skip empty
+  # chunks (chunk_end == chunk_start + 1) so we don't accidentally pull the
+  # chunk delimiters back as content via a backwards range.
+  chunks <- Map(function(s, e) {
+    if (e <= s + 1) character(0) else lines[(s + 1):(e - 1)]
+  }, chunk_starts, chunk_ends)
+  code <- paste(unlist(chunks), collapse = "\n")
 
-  # Keep only lines that are part of function definitions and their bodies
-  # We find all blocks starting with " <- function" and ending with matching braces
-  func_lines <- character()
-  in_func <- FALSE
-  brace_depth <- 0
-  seen_opening_brace <- FALSE
+  # Parse to a list of top-level expressions; R's parser handles strings and
+  # comments correctly, unlike a regex-based brace counter.
+  exprs <- parse(text = code)
 
-  for (line in code) {
-    if (grepl("<- *function", line)) {
-      in_func <- TRUE
-      brace_depth <- 0
-      seen_opening_brace <- FALSE
-    }
-    if (in_func) {
-      func_lines <- c(func_lines, line)
-
-      # Track opening and closing braces
-      opening_braces <- stringr::str_count(line, "\\{")
-      closing_braces <- stringr::str_count(line, "\\}")
-
-      if (opening_braces > 0) {
-        seen_opening_brace <- TRUE
-      }
-
-      brace_depth <- brace_depth + opening_braces - closing_braces
-
-      # Only end the function if we've seen at least one opening brace
-      # and the brace depth has returned to 0
-      if (seen_opening_brace && brace_depth == 0) {
-        in_func <- FALSE
-      }
-    }
+  is_func_def <- function(e) {
+    if (!is.call(e)) return(FALSE)
+    op <- as.character(e[[1L]])
+    if (!op %in% c("<-", "=", "<<-")) return(FALSE)
+    rhs <- e[[3L]]
+    is.call(rhs) && identical(as.character(rhs[[1L]]), "function")
   }
 
-  # Evaluate the functions in the specified environment
-  eval(parse(text = func_lines), envir = envir)
+  func_exprs <- Filter(is_func_def, as.list(exprs))
 
-  invisible(func_lines)
+  if (length(func_exprs) == 0) {
+    warning("No function definitions found in ", path)
+    return(invisible(character(0)))
+  }
+
+  for (e in func_exprs) eval(e, envir = envir)
+
+  invisible(vapply(func_exprs,
+                   function(e) paste(deparse(e), collapse = "\n"),
+                   character(1)))
 }
 
 

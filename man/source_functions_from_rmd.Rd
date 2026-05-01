@@ -12,7 +12,7 @@ source_functions_from_rmd(path, envir = parent.frame())
 \item{envir}{Environment in which to evaluate the functions (default: parent.frame())}
 }
 \value{
-Invisibly returns the extracted function code as a character vector
+Invisibly returns the deparsed function definitions as a character vector
 }
 \description{
 Extracts and evaluates only function definitions from an R Markdown file
@@ -20,9 +20,11 @@ without executing the entire document. This is useful for reusing functions
 defined in analysis notebooks without running all the analysis code.
 }
 \details{
-The function parses R code chunks (delimited by \verb{\\\{r\\\} and }) and extracts
-complete function definitions by tracking brace depth. Only lines that are
-part of function definitions (identified by \verb{<- function}) are evaluated.
+Extracts all R code chunks (delimited by \verb{\\\{r\\\} and }), parses them with
+R's parser, and evaluates only the top-level expressions that are function
+assignments (\code{name <- function(...) {...}} or \code{name = function(...) {...}}).
+Because parsing is done by R's parser rather than by tracking braces in raw
+text, comments and strings containing \verb{\\\{} or \verb{\\\}} are handled correctly.
 }
 \examples{
 \dontrun{
@@ -33,5 +35,4 @@ source_functions_from_rmd("analysis/01_preprocessing.Rmd")
 my_env <- new.env()
 source_functions_from_rmd("analysis/utils.Rmd", envir = my_env)
 }
-
 }
