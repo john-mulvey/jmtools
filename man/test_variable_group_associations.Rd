@@ -9,6 +9,7 @@ test_variable_group_associations(
   vars_to_test,
   group_var = "group",
   positive_level,
+  positive_levels = list(),
   min_complete = 5,
   p_adjust_method = "BH"
 )
@@ -24,6 +25,14 @@ Default: \code{"group"}.}
 
 \item{positive_level}{Character string specifying which level of \code{group_var}
 is encoded as 1 (the "positive" or "case" class).}
+
+\item{positive_levels}{Optional named list mapping binary predictor variable
+names to the level that should be encoded as 1 (e.g.
+\code{list(treatment = "treated", smoker = "yes")}). Variables not listed fall
+back to the alphabetical default (the second level of
+\code{sort(unique(x))}). Use this to control the sign of \code{r} for binary
+character predictors where the alphabetical default produces a
+counter-intuitive encoding. Default: \code{list()}.}
 
 \item{min_complete}{Minimum number of complete (non-NA) observations
 required to test a variable. Default: 5.}
@@ -52,10 +61,13 @@ encoded as 0/1 integers.
 }
 \details{
 Variables that are factors or character vectors with exactly two unique
-levels are automatically encoded as 0/1 integers (the second level
-alphabetically becomes 1). Variables with more than two levels are skipped
-with a message. Variables with zero variance or fewer than \code{min_complete}
-observations are also skipped.
+levels are automatically encoded as 0/1 integers. By default the second
+level of \code{sort(unique(x))} becomes 1; use \code{positive_levels} to override
+this per variable when the alphabetical default produces a
+counter-intuitive sign (e.g. for \code{c("treated", "untreated")},
+alphabetical order encodes \code{"untreated" = 1}). Variables with more than
+two levels are skipped with a message. Variables with zero variance or
+fewer than \code{min_complete} observations are also skipped.
 }
 \examples{
 \dontrun{

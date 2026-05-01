@@ -558,6 +558,13 @@ plot_pc_metadata_associations <- function(association_results,
 #'   Default: `"group"`.
 #' @param positive_level Character string specifying which level of `group_var`
 #'   is encoded as 1 (the "positive" or "case" class).
+#' @param positive_levels Optional named list mapping binary predictor variable
+#'   names to the level that should be encoded as 1 (e.g.
+#'   `list(treatment = "treated", smoker = "yes")`). Variables not listed fall
+#'   back to the alphabetical default (the second level of
+#'   `sort(unique(x))`). Use this to control the sign of `r` for binary
+#'   character predictors where the alphabetical default produces a
+#'   counter-intuitive encoding. Default: `list()`.
 #' @param min_complete Minimum number of complete (non-NA) observations
 #'   required to test a variable. Default: 5.
 #' @param p_adjust_method Method for p-value adjustment passed to
@@ -577,10 +584,13 @@ plot_pc_metadata_associations <- function(association_results,
 #'
 #' @details
 #' Variables that are factors or character vectors with exactly two unique
-#' levels are automatically encoded as 0/1 integers (the second level
-#' alphabetically becomes 1). Variables with more than two levels are skipped
-#' with a message. Variables with zero variance or fewer than `min_complete`
-#' observations are also skipped.
+#' levels are automatically encoded as 0/1 integers. By default the second
+#' level of `sort(unique(x))` becomes 1; use `positive_levels` to override
+#' this per variable when the alphabetical default produces a
+#' counter-intuitive sign (e.g. for `c("treated", "untreated")`,
+#' alphabetical order encodes `"untreated" = 1`). Variables with more than
+#' two levels are skipped with a message. Variables with zero variance or
+#' fewer than `min_complete` observations are also skipped.
 #'
 #' @export
 #'
@@ -599,9 +609,10 @@ plot_pc_metadata_associations <- function(association_results,
 #' @importFrom stats cor.test p.adjust var
 test_variable_group_associations <- function(metadata,
                                               vars_to_test,
-                                              group_var      = "group",
+                                              group_var       = "group",
                                               positive_level,
-                                              min_complete   = 5,
+                                              positive_levels = list(),
+                                              min_complete    = 5,
                                               p_adjust_method = "BH") {
 
   if (!group_var %in% names(metadata)) {
@@ -627,8 +638,20 @@ test_variable_group_associations <- function(metadata,
     if (is.factor(x) || is.character(x)) {
       lvls <- sort(unique(x[!is.na(x)]))
       if (length(lvls) == 2) {
-        message("Auto-encoding binary variable '", var, "': '", lvls[2], "' = 1")
-        x <- as.integer(x == lvls[2])
+        positive <- positive_levels[[var]]
+        if (is.null(positive)) {
+          positive <- as.character(lvls[2])
+          message("Auto-encoding binary variable '", var, "': '", positive,
+                  "' = 1 (alphabetical default; pass via positive_levels to override)")
+        } else {
+          if (!positive %in% as.character(lvls)) {
+            stop("positive_levels[['", var, "']] = '", positive,
+                 "' is not a level of '", var, "' (levels: ",
+                 paste(lvls, collapse = ", "), ")")
+          }
+          message("Encoding binary variable '", var, "': '", positive, "' = 1")
+        }
+        x <- as.integer(x == positive)
       } else {
         message("Skipping '", var, "': non-binary categorical (", length(lvls), " levels)")
         next
