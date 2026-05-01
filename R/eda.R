@@ -343,8 +343,11 @@ test_pc_metadata_associations <- function(pca_result,
 #'   (default: 0.05). Ignored when `association_results` lacks p-values.
 #' @param use_adjusted_p Logical. If `TRUE` (default), uses adjusted p-values
 #'   for determining significance. If `FALSE`, uses raw p-values.
-#' @param show_all Logical. If `TRUE`, shows all tested associations. If
-#'   `FALSE` (default), shows only significant associations. Silently
+#' @param show_all Logical. If `TRUE` (default), shows all tested metadata
+#'   variables. If `FALSE`, restricts the plot to variables that have at
+#'   least one significant association (across any PC); cells of those
+#'   variables that are themselves non-significant are still shown so the
+#'   reader can see which PCs are and are not associated. Silently
 #'   overridden to `TRUE` when no p-values are available (e.g.,
 #'   `method = "multivariate_shapley"` results), since there is no
 #'   significance criterion to filter on.
@@ -415,7 +418,7 @@ test_pc_metadata_associations <- function(pca_result,
 plot_pc_metadata_associations <- function(association_results,
                                           p_threshold = 0.05,
                                           use_adjusted_p = TRUE,
-                                          show_all = FALSE,
+                                          show_all = TRUE,
                                           order_by_pc = 1,
                                           fill_limits = c(0, 1),
                                           title = NULL) {
@@ -436,11 +439,15 @@ plot_pc_metadata_associations <- function(association_results,
     show_all <- TRUE
   }
 
-  # Filter to significant associations if requested
+  # Restrict to variables that have at least one significant association if
+  # requested. We filter at the variable level, not the cell level, so the
+  # null cells of retained variables remain visible (informative for
+  # confounding analysis).
   plot_data <- association_results
   if (!show_all) {
-    plot_data <- plot_data[!is.na(plot_data[[p_col]]) &
-                             plot_data[[p_col]] < p_threshold, ]
+    sig_vars <- unique(plot_data$variable[!is.na(plot_data[[p_col]]) &
+                                          plot_data[[p_col]] < p_threshold])
+    plot_data <- plot_data[plot_data$variable %in% sig_vars, ]
   }
 
   if (nrow(plot_data) == 0) {

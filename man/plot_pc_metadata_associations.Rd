@@ -8,7 +8,7 @@ plot_pc_metadata_associations(
   association_results,
   p_threshold = 0.05,
   use_adjusted_p = TRUE,
-  show_all = FALSE,
+  show_all = TRUE,
   order_by_pc = 1,
   fill_limits = c(0, 1),
   title = NULL
@@ -25,8 +25,11 @@ be R-squared in [0, 1].}
 \item{use_adjusted_p}{Logical. If \code{TRUE} (default), uses adjusted p-values
 for determining significance. If \code{FALSE}, uses raw p-values.}
 
-\item{show_all}{Logical. If \code{TRUE}, shows all tested associations. If
-\code{FALSE} (default), shows only significant associations. Silently
+\item{show_all}{Logical. If \code{TRUE} (default), shows all tested metadata
+variables. If \code{FALSE}, restricts the plot to variables that have at
+least one significant association (across any PC); cells of those
+variables that are themselves non-significant are still shown so the
+reader can see which PCs are and are not associated. Silently
 overridden to \code{TRUE} when no p-values are available (e.g.,
 \code{method = "multivariate_shapley"} results), since there is no
 significance criterion to filter on.}
