@@ -31,6 +31,74 @@ overlap_coefficient <- function(set1, set2) {
   intersection / min_size
 }
 
+#' Compute pairwise similarity edges above a threshold
+#'
+#' @param gene_sets Named list of character vectors (one per gene set).
+#' @param similarity_fn Function taking two character vectors, returning a
+#'   numeric similarity in \[0, 1\].
+#' @param threshold Minimum similarity for an edge to be included.
+#' @return A data frame with columns `from`, `to`, `similarity` (one row per
+#'   above-threshold pair). Empty when no pairs qualify.
+#' @keywords internal
+.compute_similarity_edges <- function(gene_sets, similarity_fn, threshold) {
+  n <- length(gene_sets)
+  empty <- data.frame(from = character(0), to = character(0),
+                      similarity = numeric(0), stringsAsFactors = FALSE)
+  if (n < 2) return(empty)
+
+  edges <- list()
+  for (i in seq_len(n - 1)) {
+    for (j in (i + 1):n) {
+      sim <- similarity_fn(gene_sets[[i]], gene_sets[[j]])
+      if (sim >= threshold) {
+        edges[[length(edges) + 1]] <- data.frame(
+          from = names(gene_sets)[i],
+          to = names(gene_sets)[j],
+          similarity = sim,
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+  if (length(edges) == 0) return(empty)
+  do.call(rbind, edges)
+}
+
+#' Cluster gene sets via Walktrap on a similarity graph
+#'
+#' @param gene_sets Named list of character vectors (one per gene set).
+#' @param similarity_fn Similarity function.
+#' @param threshold Edge threshold.
+#' @return A data frame with columns `name`, `cluster` (one row per gene set).
+#'   Disconnected gene sets each form their own singleton cluster.
+#' @keywords internal
+.cluster_gene_sets <- function(gene_sets, similarity_fn, threshold) {
+  edges <- .compute_similarity_edges(gene_sets, similarity_fn, threshold)
+  vertices <- data.frame(name = names(gene_sets), stringsAsFactors = FALSE)
+  graph <- igraph::graph_from_data_frame(
+    d = edges, directed = FALSE, vertices = vertices
+  )
+  if (igraph::ecount(graph) > 0) {
+    cluster_ids <- as.integer(igraph::membership(
+      igraph::cluster_walktrap(graph, weights = igraph::E(graph)$weight)
+    ))
+  } else {
+    cluster_ids <- seq_along(gene_sets)
+  }
+  data.frame(name = names(gene_sets), cluster = cluster_ids,
+             stringsAsFactors = FALSE)
+}
+
+#' Select similarity function by name
+#' @keywords internal
+.select_similarity_fn <- function(metric) {
+  switch(metric,
+         jaccard = jaccard_similarity,
+         overlap = overlap_coefficient,
+         stop("Unknown similarity metric: ", metric))
+}
+
+
 #' Cluster enrichment results by gene overlap similarity
 #'
 #' Clusters significant gene sets based on similarity of their
@@ -126,12 +194,7 @@ cluster_enrichment_results <- function(enrichment_results,
                                   similarity_metric = c("jaccard", "overlap")) {
 
   similarity_metric <- match.arg(similarity_metric)
-
-  # Select similarity function
- similarity_fn <- switch(similarity_metric,
-    jaccard = jaccard_similarity,
-    overlap = overlap_coefficient
-  )
+  similarity_fn <- .select_similarity_fn(similarity_metric)
 
   # Validate inputs
   required_cols <- c(gene_set_col, score_col, adj_pval_col, genes_col, n_genes_col)
@@ -159,30 +222,9 @@ cluster_enrichment_results <- function(enrichment_results,
   gene_sets <- sig_data[[genes_col]]
   names(gene_sets) <- sig_data[[gene_set_col]]
 
-  # Calculate pairwise similarities and build adjacency matrix
-  n_sets <- nrow(sig_data)
-  adj_matrix <- matrix(0, nrow = n_sets, ncol = n_sets)
-
-  for (i in seq_len(n_sets - 1)) {
-    for (j in (i + 1):n_sets) {
-      sim <- similarity_fn(gene_sets[[i]], gene_sets[[j]])
-      if (sim >= similarity_threshold) {
-        adj_matrix[i, j] <- sim
-        adj_matrix[j, i] <- sim
-      }
-    }
-  }
-
-  # Clustering via Walktrap algorithm (community detection based on random walks)
-  graph <- igraph::graph_from_adjacency_matrix(
-    adj_matrix,
-    mode = "undirected",
-    weighted = TRUE,
-    diag = FALSE
-  )
-  walktrap_result <- igraph::cluster_walktrap(graph, weights = igraph::E(graph)$weight)
-  cluster_ids <- as.integer(igraph::membership(walktrap_result))
-
+  # Cluster via shared helper
+  cluster_df <- .cluster_gene_sets(gene_sets, similarity_fn, similarity_threshold)
+  cluster_ids <- cluster_df$cluster[match(sig_data[[gene_set_col]], cluster_df$name)]
   sig_data$cluster <- cluster_ids
 
   # Determine cluster labels (gene set with largest n_genes in each cluster)
@@ -716,8 +758,13 @@ plot_gsea_bars <- function(enrichment_results,
 #'   number of genes in each gene set. Default: "n_genes".
 #' @param adj_p_threshold Adjusted p-value threshold for filtering gene sets.
 #'   Default: 0.05.
-#' @param similarity_threshold Minimum Jaccard similarity to draw an edge
-#'   between two gene sets. Default: 0.3.
+#' @param similarity_threshold Minimum similarity to draw an edge between two
+#'   gene sets. Default: 0.3.
+#' @param similarity_metric Character string specifying which similarity metric
+#'   to use. One of `"jaccard"` (Jaccard index) or `"overlap"` (overlap
+#'   coefficient / Szymkiewicz-Simpson). Pass the same metric to
+#'   [cluster_enrichment_results()] to keep cluster assignments consistent.
+#'   Default: `"jaccard"`.
 #' @param min_cluster_size Minimum number of gene sets in a cluster to draw
 #'   a hull and label. Default: 3.
 #' @param exclude_singletons Logical. If `TRUE`, singleton clusters (size 1)
@@ -756,22 +803,23 @@ plot_gsea_bars <- function(enrichment_results,
 #' The network visualisation shows:
 #' \itemize{
 #'   \item **Nodes**: Gene sets, sized by number of genes, coloured by NES
-#'   \item **Edges**: Connections between gene sets with Jaccard similarity
-#'     above the threshold, with edge width proportional to similarity
+#'   \item **Edges**: Connections between gene sets with similarity above the
+#'     threshold, with edge width proportional to similarity
 #'   \item **Clusters**: Detected using the Walktrap algorithm, shown as
 #'     coloured hulls with labels
 #' }
 #'
-#' Edge weights are calculated as the Jaccard similarity between the leading
-#' edge genes of each pair of gene sets. This captures functional similarity
-#' based on the genes driving the enrichment signal.
+#' Edge weights are the chosen `similarity_metric` between leading-edge genes
+#' of each pair of gene sets. This captures functional similarity based on the
+#' genes driving the enrichment signal.
 #'
 #' Cluster labels are determined by selecting the most "central" gene set
 #' within each cluster, either by PageRank centrality or by gene set size.
 #'
-#' **Note:** Both this function and [cluster_enrichment_results()] use the
-#' Walktrap algorithm for clustering, so cluster assignments should be
-#' consistent between the two (given the same similarity threshold).
+#' **Note:** Both this function and [cluster_enrichment_results()] share the
+#' same internal clustering routine, so cluster assignments are identical
+#' between the two when called with the same `similarity_metric` and
+#' `similarity_threshold` on the same input.
 #'
 #' @section Required Packages:
 #' This function requires the following packages to be installed:
@@ -816,6 +864,7 @@ plot_gsea_network <- function(gsea_results,
                                n_genes_col = "n_genes",
                                adj_p_threshold = 0.05,
                                similarity_threshold = 0.3,
+                               similarity_metric = c("jaccard", "overlap"),
                                min_cluster_size = 3,
                                exclude_singletons = FALSE,
                                show_labels = TRUE,
@@ -842,6 +891,8 @@ plot_gsea_network <- function(gsea_results,
   }
 
   label_clusters_by <- match.arg(label_clusters_by)
+  similarity_metric <- match.arg(similarity_metric)
+  similarity_fn <- .select_similarity_fn(similarity_metric)
 
   # Validate inputs
   required_cols <- c(gene_set_col, nes_col, adj_pval_col, leading_edge_col, n_genes_col)
@@ -859,47 +910,32 @@ plot_gsea_network <- function(gsea_results,
     return(NULL)
   }
 
-  # Create nodes data frame
-  nodes <- data.frame(
-    name = plot_data[[gene_set_col]],
-    nes = plot_data[[nes_col]],
-    n_genes = plot_data[[n_genes_col]],
-    stringsAsFactors = FALSE
-  )
-
-  # Extract leading edge genes
+  # Extract leading edge genes (named list)
   leading_edges <- plot_data[[leading_edge_col]]
   names(leading_edges) <- plot_data[[gene_set_col]]
 
-  # Calculate pairwise Jaccard similarities
-  n_sets <- nrow(nodes)
-  edges_list <- list()
-
-  for (i in seq_len(n_sets - 1)) {
-    for (j in (i + 1):n_sets) {
-      sim <- jaccard_similarity(leading_edges[[i]], leading_edges[[j]])
-      if (sim >= similarity_threshold) {
-        edges_list[[length(edges_list) + 1]] <- data.frame(
-          from = nodes$name[i],
-          to = nodes$name[j],
-          similarity = sim,
-          stringsAsFactors = FALSE
-        )
-      }
-    }
-  }
-
-  if (length(edges_list) == 0) {
+  # Compute edges and cluster IDs via shared helpers (kept consistent with
+  # cluster_enrichment_results() given the same metric and threshold).
+  edges <- .compute_similarity_edges(leading_edges, similarity_fn,
+                                     similarity_threshold)
+  if (nrow(edges) == 0) {
     warning("No edges meet the similarity threshold. ",
             "Try lowering similarity_threshold.")
-    # Create graph with no edges
-    edges <- data.frame(from = character(0), to = character(0),
-                        similarity = numeric(0), stringsAsFactors = FALSE)
-  } else {
-    edges <- do.call(rbind, edges_list)
   }
+  cluster_df <- .cluster_gene_sets(leading_edges, similarity_fn,
+                                   similarity_threshold)
 
-  # Create tidygraph object
+  # Create nodes data frame including pre-computed cluster IDs
+  nodes <- data.frame(
+    name    = plot_data[[gene_set_col]],
+    nes     = plot_data[[nes_col]],
+    n_genes = plot_data[[n_genes_col]],
+    cluster = factor(cluster_df$cluster[match(plot_data[[gene_set_col]],
+                                              cluster_df$name)]),
+    stringsAsFactors = FALSE
+  )
+
+  # Create tidygraph object (clusters already attached on nodes)
   graph <- tidygraph::tbl_graph(
     nodes = nodes,
     edges = edges,
@@ -907,13 +943,10 @@ plot_gsea_network <- function(gsea_results,
     node_key = "name"
   )
 
-  # Add cluster membership and centrality
+  # Add PageRank centrality (used for label selection when requested)
   graph <- graph |>
     tidygraph::activate("nodes") |>
-    tidygraph::mutate(
-      cluster = as.factor(tidygraph::group_walktrap()),
-      pagerank = tidygraph::centrality_pagerank()
-    )
+    tidygraph::mutate(pagerank = tidygraph::centrality_pagerank())
 
   # Extract node data with layout coordinates
   set.seed(seed)
@@ -981,7 +1014,7 @@ plot_gsea_network <- function(gsea_results,
       colour = "grey60"
     ) +
     ggraph::scale_edge_width_continuous(
-      name = "Jaccard\nsimilarity",
+      name = paste0(tools::toTitleCase(similarity_metric), "\nsimilarity"),
       range = c(0.2, 2),
       breaks = c(0.3, 0.5, 0.7, 0.9)
     )

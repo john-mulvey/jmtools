@@ -13,6 +13,7 @@ plot_gsea_network(
   n_genes_col = "n_genes",
   adj_p_threshold = 0.05,
   similarity_threshold = 0.3,
+  similarity_metric = c("jaccard", "overlap"),
   min_cluster_size = 3,
   exclude_singletons = FALSE,
   show_labels = TRUE,
@@ -47,8 +48,14 @@ number of genes in each gene set. Default: "n_genes".}
 \item{adj_p_threshold}{Adjusted p-value threshold for filtering gene sets.
 Default: 0.05.}
 
-\item{similarity_threshold}{Minimum Jaccard similarity to draw an edge
-between two gene sets. Default: 0.3.}
+\item{similarity_threshold}{Minimum similarity to draw an edge between two
+gene sets. Default: 0.3.}
+
+\item{similarity_metric}{Character string specifying which similarity metric
+to use. One of \code{"jaccard"} (Jaccard index) or \code{"overlap"} (overlap
+coefficient / Szymkiewicz-Simpson). Pass the same metric to
+\code{\link[=cluster_enrichment_results]{cluster_enrichment_results()}} to keep cluster assignments consistent.
+Default: \code{"jaccard"}.}
 
 \item{min_cluster_size}{Minimum number of gene sets in a cluster to draw
 a hull and label. Default: 3.}
@@ -104,22 +111,23 @@ on the plot using convex hulls.
 The network visualisation shows:
 \itemize{
 \item \strong{Nodes}: Gene sets, sized by number of genes, coloured by NES
-\item \strong{Edges}: Connections between gene sets with Jaccard similarity
-above the threshold, with edge width proportional to similarity
+\item \strong{Edges}: Connections between gene sets with similarity above the
+threshold, with edge width proportional to similarity
 \item \strong{Clusters}: Detected using the Walktrap algorithm, shown as
 coloured hulls with labels
 }
 
-Edge weights are calculated as the Jaccard similarity between the leading
-edge genes of each pair of gene sets. This captures functional similarity
-based on the genes driving the enrichment signal.
+Edge weights are the chosen \code{similarity_metric} between leading-edge genes
+of each pair of gene sets. This captures functional similarity based on the
+genes driving the enrichment signal.
 
 Cluster labels are determined by selecting the most "central" gene set
 within each cluster, either by PageRank centrality or by gene set size.
 
-\strong{Note:} Both this function and \code{\link[=cluster_enrichment_results]{cluster_enrichment_results()}} use the
-Walktrap algorithm for clustering, so cluster assignments should be
-consistent between the two (given the same similarity threshold).
+\strong{Note:} Both this function and \code{\link[=cluster_enrichment_results]{cluster_enrichment_results()}} share the
+same internal clustering routine, so cluster assignments are identical
+between the two when called with the same \code{similarity_metric} and
+\code{similarity_threshold} on the same input.
 }
 \section{Required Packages}{
 
