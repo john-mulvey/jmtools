@@ -856,6 +856,13 @@ pheatmap_clustered_with_na <- function(mat,
 
   if (scale_rows) {
     mat <- t(scale(t(mat)))
+    n_constant <- sum(rowSums(!is.nan(mat) & !is.na(mat)) == 0)
+    if (n_constant > 0) {
+      warning(n_constant, " row(s) had zero variance and became all-NaN ",
+              "after scaling; they will attach via max-distance replacement ",
+              "in the dendrogram. Consider removing them before plotting if ",
+              "unexpected.")
+    }
   }
 
   na_tolerant_hclust <- function(m, method) {
