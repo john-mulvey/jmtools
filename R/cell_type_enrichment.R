@@ -22,8 +22,8 @@
 #' @param gene_col Column containing gene symbols. Default: `"gene"`.
 #' @param log2fc_col Column containing average log2 fold change. Default:
 #'   `"avg_log2fc"`.
-#' @param auc_col Column containing discriminatory power (AUC - 0.5), as
-#'   output by `Seurat::FindAllMarkers()`. Default: `"power"`.
+#' @param auc_col Column containing the AUC (area under the ROC curve), as
+#'   output by `Seurat::FindAllMarkers(test.use = "roc")`. Default: `"my_auc"`.
 #' @param padj_col Column containing adjusted p-values. Default: `"padj"`.
 #' @param pct1_col Column containing the fraction of cells expressing the gene.
 #'   Default: `"pct_1"`.
@@ -62,7 +62,7 @@ filter_marker_genes <- function(marker_genes,
                                 cluster_col    = "cluster",
                                 gene_col       = "gene",
                                 log2fc_col     = "avg_log2fc",
-                                auc_col        = "power",
+                                auc_col        = "my_auc",
                                 padj_col       = "padj",
                                 pct1_col       = "pct_1") {
 
@@ -73,10 +73,10 @@ filter_marker_genes <- function(marker_genes,
   }
 
   out <- marker_genes[
-    marker_genes[[log2fc_col]]        > min_avg_log2fc &
-    marker_genes[[auc_col]] + 0.5     > min_auc        &
-    marker_genes[[padj_col]]          < max_padj       &
-    marker_genes[[pct1_col]]          > min_pct_1      ,
+    marker_genes[[log2fc_col]] > min_avg_log2fc &
+    marker_genes[[auc_col]]    > min_auc        &
+    marker_genes[[padj_col]]   < max_padj       &
+    marker_genes[[pct1_col]]   > min_pct_1      ,
   ]
 
   if (nrow(out) == 0) {

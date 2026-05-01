@@ -13,7 +13,7 @@ filter_marker_genes(
   cluster_col = "cluster",
   gene_col = "gene",
   log2fc_col = "avg_log2fc",
-  auc_col = "power",
+  auc_col = "my_auc",
   padj_col = "padj",
   pct1_col = "pct_1"
 )
@@ -40,8 +40,8 @@ gene. Avoids markers driven by a tiny minority of cells. Default: 0.10.}
 \item{log2fc_col}{Column containing average log2 fold change. Default:
 \code{"avg_log2fc"}.}
 
-\item{auc_col}{Column containing discriminatory power (AUC - 0.5), as
-output by \code{Seurat::FindAllMarkers()}. Default: \code{"power"}.}
+\item{auc_col}{Column containing the AUC (area under the ROC curve), as
+output by \code{Seurat::FindAllMarkers(test.use = "roc")}. Default: \code{"my_auc"}.}
 
 \item{padj_col}{Column containing adjusted p-values. Default: \code{"padj"}.}
 
