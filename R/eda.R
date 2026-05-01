@@ -3,9 +3,11 @@
 
 #' Test associations between principal components and metadata
 #'
-#' Tests associations between PCA coordinates and metadata variables using
-#' appropriate statistical tests: Spearman correlation for continuous variables
-#' and Kruskal-Wallis test for categorical variables.
+#' Tests associations between PCA coordinates and metadata variables, returning
+#' a non-negative effect size in \[0, 1\] for every (variable, PC) pair. Two
+#' methods are supported: a univariate per-variable linear model with an F-test
+#' p-value, and a multivariate Shapley-value (LMG) decomposition of the joint
+#' R-squared with no per-cell p-value.
 #'
 #' @param pca_result A `prcomp` object from [stats::prcomp()]. The function
 #'   extracts scores from `pca_result$x` and variance explained from
@@ -22,37 +24,55 @@
 #' @param min_complete_pct Minimum proportion of non-missing values required
 #'   for a variable to be tested (default: 0.7, i.e., 70%).
 #' @param p_adjust_method Method for p-value adjustment. See [stats::p.adjust()]
-#'   for options (default: "BH" for Benjamini-Hochberg).
+#'   for options (default: "BH" for Benjamini-Hochberg). Ignored when
+#'   `method = "multivariate_shapley"`.
+#' @param method Either `"univariate"` (default) or `"multivariate_shapley"`.
+#'   See Details.
 #'
 #' @return A data frame with columns:
 #' \describe{
 #'   \item{variable}{Name of the metadata variable}
 #'   \item{principal_component}{Name of the principal component (e.g., "PC1")}
-#'   \item{test_type}{Statistical test used ("Spearman" or "Kruskal-Wallis")}
-#'   \item{statistic}{Effect size: Spearman's rho for continuous variables,
-#'     eta-squared for categorical variables}
-#'   \item{p_value}{Raw p-value from the statistical test}
+#'   \item{test_type}{Method used: `"Univariate"` or `"Multivariate Shapley"`}
+#'   \item{statistic}{Effect size in \[0, 1\] (see Details)}
+#'   \item{p_value}{Raw p-value (univariate only; `NA` for shapley)}
 #'   \item{n}{Number of complete observations used}
-#'   \item{p_adj}{Adjusted p-value using the specified method}
+#'   \item{p_adj}{Adjusted p-value (univariate only; `NA` for shapley)}
 #' }
 #'
 #' @details
-#' For continuous variables, Spearman's rank correlation is used, which is
-#' robust to non-normality and outliers. For categorical variables (factors
-#' or character vectors), the Kruskal-Wallis test is used with eta-squared
-#' as the effect size measure.
+#' \strong{Univariate.} For each (variable, PC) pair, fits a linear model
+#' `lm(PC ~ variable)` and returns the model R-squared as the effect size
+#' and the F-test p-value (from `anova(fit)$"Pr(>F)"[1]`) as the significance.
+#' Continuous variables yield squared Pearson correlation; categorical
+#' variables (factors or character vectors) yield eta-squared (one-way ANOVA),
+#' both on the same \[0, 1\] scale. Pairwise complete cases are used per cell.
+#'
+#' \strong{Multivariate Shapley.} For each PC, fits a single joint model
+#' `lm(PC ~ var1 + var2 + ...)` and decomposes the joint R-squared into
+#' per-variable contributions via the Shapley value (LMG metric: the average
+#' marginal R-squared contribution over all variable orderings), implemented
+#' by [relaimpo::calc.relimp()] with `type = "lmg"`. The contributions are
+#' non-negative and sum exactly to the joint R-squared. This addresses the
+#' confounding problem of the univariate approach (correlated variables both
+#' appearing associated with the same PC) by partitioning shared variance
+#' fairly between predictors. No per-variable p-value is returned: the LMG
+#' statistic is a descriptive decomposition and lacks a natural null
+#' distribution, so `p_value` and `p_adj` are `NA`. Listwise-complete cases
+#' are used per PC (samples with any NA across `vars_to_test` are dropped),
+#' and `vars_to_test` must contain at least two variables. Requires the
+#' `relaimpo` package.
 #'
 #' Variables with more than `1 - min_complete_pct` proportion of missing
-#' values are automatically excluded from testing.
+#' values are automatically excluded from testing in either mode.
 #'
 #' @export
 #'
 #' @examples
 #' \dontrun{
-#' # Run PCA with prcomp
 #' pca_result <- prcomp(t(expr_matrix), scale. = TRUE, center = TRUE)
 #'
-#' # Test associations
+#' # Default: univariate per-variable tests with p-values
 #' associations <- test_pc_metadata_associations(
 #'   pca_result = pca_result,
 #'   metadata = sample_metadata,
@@ -60,14 +80,21 @@
 #'   id_col = "sample_id",
 #'   min_var_explained = 5
 #' )
-#'
-#' # View significant associations
 #' associations[associations$p_adj < 0.05, ]
+#'
+#' # Multivariate decomposition: handles confounding, no p-values
+#' shapley <- test_pc_metadata_associations(
+#'   pca_result = pca_result,
+#'   metadata = sample_metadata,
+#'   vars_to_test = c("age", "sex", "treatment", "bmi"),
+#'   id_col = "sample_id",
+#'   method = "multivariate_shapley"
+#' )
 #' }
 #'
 #' @seealso [plot_pc_metadata_associations()] for visualising results
 #'
-#' @importFrom stats cor.test kruskal.test p.adjust
+#' @importFrom stats lm anova p.adjust complete.cases as.formula var
 test_pc_metadata_associations <- function(pca_result,
                                           metadata,
                                           vars_to_test,
@@ -75,7 +102,10 @@ test_pc_metadata_associations <- function(pca_result,
                                           n_pcs = 5,
                                           min_var_explained = 0,
                                           min_complete_pct = 0.7,
-                                          p_adjust_method = "BH") {
+                                          p_adjust_method = "BH",
+                                          method = c("univariate", "multivariate_shapley")) {
+
+  method <- match.arg(method)
 
   # Validate inputs
   if (!inherits(pca_result, "prcomp")) {
@@ -86,8 +116,15 @@ test_pc_metadata_associations <- function(pca_result,
     stop("vars_to_test must be specified and cannot be empty")
   }
 
+  if (method == "multivariate_shapley") {
+    if (!requireNamespace("relaimpo", quietly = TRUE)) {
+      stop("Package 'relaimpo' is required for method = 'multivariate_shapley'. ",
+           "Install it with install.packages('relaimpo')")
+    }
+  }
+
   # Extract PC scores
- pca_coords <- pca_result$x
+  pca_coords <- pca_result$x
 
   # Calculate variance explained from sdev
   var_explained <- (pca_result$sdev^2 / sum(pca_result$sdev^2)) * 100
@@ -141,71 +178,121 @@ test_pc_metadata_associations <- function(pca_result,
     return(data.frame())
   }
 
+  if (method == "multivariate_shapley" && length(vars_to_test) < 2) {
+    stop("method = 'multivariate_shapley' requires at least 2 variables ",
+         "after completeness filtering")
+  }
+
   # Initialise results list
   results_list <- list()
 
-  # Test each variable against each PC
-  for (var in vars_to_test) {
-    var_data <- combined_data[[var]]
+  if (method == "univariate") {
+    for (var in vars_to_test) {
+      var_data <- combined_data[[var]]
 
-    # Skip if all NA
-    if (all(is.na(var_data))) next
+      if (all(is.na(var_data))) next
 
-    # Determine variable type
-    is_continuous <- is.numeric(var_data) && !is.factor(var_data)
+      is_continuous <- is.numeric(var_data) && !is.factor(var_data)
 
-    for (pc_idx in pcs_to_use) {
-      pc_name <- colnames(pca_coords)[pc_idx]
-      pc_values <- combined_data[[pc_name]]
+      for (pc_idx in pcs_to_use) {
+        pc_name <- colnames(pca_coords)[pc_idx]
+        pc_values <- combined_data[[pc_name]]
 
-      # Get complete cases
-      complete_idx <- !is.na(var_data) & !is.na(pc_values)
-      n_complete <- sum(complete_idx)
+        complete_idx <- !is.na(var_data) & !is.na(pc_values)
+        n_complete <- sum(complete_idx)
 
-      if (n_complete < 3) next
+        if (n_complete < 3) next
 
-      if (is_continuous) {
-        # Spearman correlation for continuous variables
-        test_result <- stats::cor.test(
-          var_data[complete_idx],
-          pc_values[complete_idx],
-          method = "spearman",
-          exact = FALSE
+        if (is_continuous) {
+          x <- var_data[complete_idx]
+          if (stats::var(x) == 0) next
+          fit_data <- data.frame(pc = pc_values[complete_idx], var = x)
+        } else {
+          group <- droplevels(as.factor(var_data[complete_idx]))
+          if (length(levels(group)) < 2) next
+          fit_data <- data.frame(pc = pc_values[complete_idx], var = group)
+        }
+
+        fit <- tryCatch(
+          stats::lm(pc ~ var, data = fit_data),
+          error = function(e) NULL
         )
+        if (is.null(fit)) next
+
+        r_squared <- summary(fit)$r.squared
+        p_value <- stats::anova(fit)$"Pr(>F)"[1]
+
+        if (is.na(r_squared) || is.na(p_value)) next
 
         results_list[[length(results_list) + 1]] <- data.frame(
           variable = var,
           principal_component = pc_name,
-          test_type = "Spearman",
-          statistic = as.numeric(test_result$estimate),
-          p_value = test_result$p.value,
+          test_type = "Univariate",
+          statistic = r_squared,
+          p_value = p_value,
           n = n_complete,
           stringsAsFactors = FALSE
         )
+      }
+    }
+  } else {
+    # Multivariate Shapley: one joint lm per PC, decomposed via relaimpo LMG.
+    # Coerce character variables to factors so lm/calc.relimp handle them
+    # consistently across PC iterations.
+    for (v in vars_to_test) {
+      if (is.character(combined_data[[v]])) {
+        combined_data[[v]] <- as.factor(combined_data[[v]])
+      }
+    }
 
-      } else {
-        # Kruskal-Wallis for categorical variables
-        test_data <- data.frame(
-          pc = pc_values[complete_idx],
-          group = droplevels(as.factor(var_data[complete_idx]))
-        )
+    for (pc_idx in pcs_to_use) {
+      pc_name <- colnames(pca_coords)[pc_idx]
 
-        # Need at least 2 groups
-        if (length(unique(test_data$group)) < 2) next
+      shapley_data <- combined_data[, c(pc_name, vars_to_test), drop = FALSE]
+      complete_idx <- stats::complete.cases(shapley_data)
+      n_complete <- sum(complete_idx)
 
-        kw_test <- stats::kruskal.test(pc ~ group, data = test_data)
+      # Need n > p + 1 at minimum for the joint model; require a margin.
+      if (n_complete < length(vars_to_test) + 2) {
+        warning("Skipping ", pc_name, ": only ", n_complete,
+                " complete cases for ", length(vars_to_test),
+                "-variable joint model")
+        next
+      }
 
-        # Calculate eta-squared as effect size
-        # Formula: (H - k + 1) / (n - k), where H is the test statistic and k is number of groups
-        k <- length(unique(test_data$group))
-        eta_sq <- (as.numeric(kw_test$statistic) - k + 1) / (n_complete - k)
+      fit_data <- shapley_data[complete_idx, , drop = FALSE]
+      fit_formula <- stats::as.formula(
+        paste(pc_name, "~", paste(vars_to_test, collapse = " + "))
+      )
 
+      fit <- tryCatch(
+        stats::lm(fit_formula, data = fit_data),
+        error = function(e) {
+          warning("Skipping ", pc_name, ": lm failed (", e$message, ")")
+          NULL
+        }
+      )
+      if (is.null(fit)) next
+
+      ri <- tryCatch(
+        relaimpo::calc.relimp(fit, type = "lmg"),
+        error = function(e) {
+          warning("Skipping ", pc_name, ": relaimpo::calc.relimp failed (",
+                  e$message, ")")
+          NULL
+        }
+      )
+      if (is.null(ri)) next
+
+      lmg_values <- ri@lmg
+
+      for (var in vars_to_test) {
         results_list[[length(results_list) + 1]] <- data.frame(
           variable = var,
           principal_component = pc_name,
-          test_type = "Kruskal-Wallis",
-          statistic = eta_sq,
-          p_value = kw_test$p.value,
+          test_type = "Multivariate Shapley",
+          statistic = as.numeric(lmg_values[var]),
+          p_value = NA_real_,
           n = n_complete,
           stringsAsFactors = FALSE
         )
@@ -221,7 +308,7 @@ test_pc_metadata_associations <- function(pca_result,
 
   results_df <- do.call(rbind, results_list)
 
-  # Adjust p-values
+  # Adjust p-values (NAs propagate cleanly for shapley rows)
   results_df$p_adj <- stats::p.adjust(results_df$p_value, method = p_adjust_method)
 
   return(results_df)
@@ -231,37 +318,47 @@ test_pc_metadata_associations <- function(pca_result,
 #' Plot PC-metadata associations as a heatmap
 #'
 #' Creates a heatmap visualisation of associations between principal components
-#' and metadata variables, with significant associations highlighted.
+#' and metadata variables, with significant associations highlighted when
+#' p-values are available.
 #'
 #' @param association_results Data frame of results from
-#'   [test_pc_metadata_associations()].
+#'   [test_pc_metadata_associations()]. The `statistic` column is expected to
+#'   be R-squared in \[0, 1\].
 #' @param p_threshold Significance threshold for highlighting associations
-#'   (default: 0.05).
+#'   (default: 0.05). Ignored when `association_results` lacks p-values.
 #' @param use_adjusted_p Logical. If `TRUE` (default), uses adjusted p-values
 #'   for determining significance. If `FALSE`, uses raw p-values.
 #' @param show_all Logical. If `TRUE`, shows all tested associations. If
-#'   `FALSE` (default), shows only significant associations.
+#'   `FALSE` (default), shows only significant associations. Silently
+#'   overridden to `TRUE` when no p-values are available (e.g.,
+#'   `method = "multivariate_shapley"` results), since there is no
+#'   significance criterion to filter on.
 #' @param order_by_pc Integer specifying which PC to use for ordering variables
 #'   by effect size (default: 1 for PC1).
 #' @param fill_limits Numeric vector of length 2 specifying the limits for the
-#'   colour scale (default: `c(-1, 1)`). Values outside this range are squished
-#'   to the nearest limit. For Spearman correlations, \[-1, 1\] is appropriate.
-#'   For eta-squared values (Kruskal-Wallis), consider `c(0, 1)` or a narrower
-#'   range based on observed values.
+#'   colour scale (default: `c(0, 1)`, the natural range of R-squared). Values
+#'   outside this range are squished to the nearest limit. Narrow this range
+#'   (e.g., `c(0, 0.5)`) to enhance contrast when most observed values are
+#'   small.
 #' @param title Optional plot title. If `NULL`, no title is added.
 #'
 #' @return A ggplot2 object. Returns `NULL` with a warning if no associations
 #'   meet the criteria for plotting.
 #'
 #' @details
-#' The heatmap uses a diverging colour scale from blue (negative association)
-#' through white (no association) to red (positive association). Significant
-#' associations are highlighted with bold black borders and bold text.
+#' The heatmap uses a sequential viridis colour scale, since the underlying
+#' statistic (R-squared) is non-negative. Tile text colour switches between
+#' white (on darker, low-R-squared tiles) and black (on brighter,
+#' high-R-squared tiles) for legibility across the viridis range.
+#'
+#' When p-values are present (univariate results), significant associations
+#' are highlighted with bold black borders and bold text. When p-values are
+#' absent or all `NA` (multivariate Shapley results), every tile is plotted
+#' without significance highlighting -- the absence of bold borders is
+#' itself a visual cue that the values are a variance decomposition rather
+#' than per-cell tests.
 #'
 #' Effect sizes outside `fill_limits` are squished to the nearest limit.
-#' The default \[-1, 1\] is appropriate for Spearman correlations. For
-#' Kruskal-Wallis eta-squared values (which are always positive and typically
-#' small), consider adjusting the limits or using `c(0, 1)`.
 #'
 #' @export
 #'
@@ -282,20 +379,30 @@ test_pc_metadata_associations <- function(pca_result,
 #' # Plot only significant associations
 #' plot_pc_metadata_associations(associations, show_all = FALSE)
 #'
-#' # Use raw p-values instead of adjusted
-#' plot_pc_metadata_associations(associations, use_adjusted_p = FALSE)
+#' # Narrow the colour scale to enhance contrast for small effect sizes
+#' plot_pc_metadata_associations(associations, fill_limits = c(0, 0.5))
+#'
+#' # Multivariate Shapley results: no p-values, all tiles shown unfiltered
+#' shapley <- test_pc_metadata_associations(
+#'   pca_result = pca_result,
+#'   metadata = sample_metadata,
+#'   vars_to_test = c("age", "sex", "treatment"),
+#'   id_col = "sample_id",
+#'   method = "multivariate_shapley"
+#' )
+#' plot_pc_metadata_associations(shapley)
 #' }
 #'
 #' @seealso [test_pc_metadata_associations()] for generating the input data
 #'
-#' @importFrom ggplot2 ggplot aes geom_tile geom_text scale_fill_gradient2 coord_flip theme_minimal labs theme element_text
+#' @importFrom ggplot2 ggplot aes geom_tile geom_text scale_fill_viridis_c coord_flip theme_minimal labs theme element_text
 #' @importFrom rlang .data
 plot_pc_metadata_associations <- function(association_results,
                                           p_threshold = 0.05,
                                           use_adjusted_p = TRUE,
                                           show_all = FALSE,
                                           order_by_pc = 1,
-                                          fill_limits = c(-1, 1),
+                                          fill_limits = c(0, 1),
                                           title = NULL) {
 
   if (nrow(association_results) == 0) {
@@ -305,10 +412,20 @@ plot_pc_metadata_associations <- function(association_results,
 
   p_col <- if (use_adjusted_p) "p_adj" else "p_value"
 
+  # Detect whether usable p-values are present. If not (e.g. shapley results),
+  # fall through to plotting all tiles without significance highlighting.
+  has_significance <- p_col %in% names(association_results) &&
+                      !all(is.na(association_results[[p_col]]))
+
+  if (!has_significance) {
+    show_all <- TRUE
+  }
+
   # Filter to significant associations if requested
   plot_data <- association_results
   if (!show_all) {
-    plot_data <- plot_data[plot_data[[p_col]] < p_threshold, ]
+    plot_data <- plot_data[!is.na(plot_data[[p_col]]) &
+                             plot_data[[p_col]] < p_threshold, ]
   }
 
   if (nrow(plot_data) == 0) {
@@ -321,7 +438,7 @@ plot_pc_metadata_associations <- function(association_results,
   pc_subset <- plot_data[plot_data$principal_component == pc_name, ]
 
   if (nrow(pc_subset) > 0) {
-    var_order <- pc_subset$variable[order(abs(pc_subset$statistic), decreasing = TRUE)]
+    var_order <- pc_subset$variable[order(pc_subset$statistic, decreasing = TRUE)]
     all_vars <- unique(c(var_order, plot_data$variable))
   } else {
     all_vars <- unique(plot_data$variable)
@@ -329,8 +446,19 @@ plot_pc_metadata_associations <- function(association_results,
 
   plot_data$variable <- factor(plot_data$variable, levels = all_vars)
 
-  # Mark significant associations
-  plot_data$significant <- plot_data[[p_col]] < p_threshold
+  # Mark significant associations (always FALSE when p-values absent)
+  if (has_significance) {
+    plot_data$significant <- !is.na(plot_data[[p_col]]) &
+      plot_data[[p_col]] < p_threshold
+  } else {
+    plot_data$significant <- FALSE
+  }
+
+  # Choose text colour for legibility against viridis: white on darker
+  # (low-R-squared) tiles, black on brighter (high-R-squared) tiles.
+  fill_midpoint <- mean(fill_limits)
+  text_colour <- ifelse(plot_data$statistic >= fill_midpoint, "black", "white")
+  plot_data$text_colour <- text_colour
 
   # Create base plot
   p <- ggplot2::ggplot(plot_data,
@@ -338,10 +466,10 @@ plot_pc_metadata_associations <- function(association_results,
                                     y = .data$principal_component,
                                     fill = .data$statistic)) +
     ggplot2::geom_tile(colour = "white", linewidth = 0.5) +
-    ggplot2::scale_fill_gradient2(
-      low = "blue", high = "red", mid = "white",
-      midpoint = 0, limits = fill_limits, space = "Lab",
-      name = "Effect size\n(\u03c1 or \u03b7\u00b2)",
+    ggplot2::scale_fill_viridis_c(
+      option = "viridis",
+      limits = fill_limits,
+      name = "Variance\nexplained\n(R\u00b2)",
       oob = scales::squish
     ) +
     ggplot2::coord_flip() +
@@ -365,14 +493,16 @@ plot_pc_metadata_associations <- function(association_results,
       )
   }
 
-  # Add text labels
+  # Add text labels (non-significant: regular weight; significant: bold).
+  # Use identity scale to honour per-row text colour without a legend entry.
   nonsig_data <- plot_data[!plot_data$significant, ]
   if (nrow(nonsig_data) > 0) {
     p <- p +
       ggplot2::geom_text(
         data = nonsig_data,
-        ggplot2::aes(label = sprintf("%.2f", .data$statistic)),
-        colour = "grey40", size = 3
+        ggplot2::aes(label = sprintf("%.2f", .data$statistic),
+                     colour = .data$text_colour),
+        size = 3
       )
   }
 
@@ -380,10 +510,13 @@ plot_pc_metadata_associations <- function(association_results,
     p <- p +
       ggplot2::geom_text(
         data = sig_data,
-        ggplot2::aes(label = sprintf("%.2f", .data$statistic)),
-        colour = "black", size = 3, fontface = "bold"
+        ggplot2::aes(label = sprintf("%.2f", .data$statistic),
+                     colour = .data$text_colour),
+        size = 3, fontface = "bold"
       )
   }
+
+  p <- p + ggplot2::scale_colour_identity()
 
   return(p)
 }

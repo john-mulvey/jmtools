@@ -10,31 +10,35 @@ plot_pc_metadata_associations(
   use_adjusted_p = TRUE,
   show_all = FALSE,
   order_by_pc = 1,
-  fill_limits = c(-1, 1),
+  fill_limits = c(0, 1),
   title = NULL
 )
 }
 \arguments{
 \item{association_results}{Data frame of results from
-\code{\link[=test_pc_metadata_associations]{test_pc_metadata_associations()}}.}
+\code{\link[=test_pc_metadata_associations]{test_pc_metadata_associations()}}. The \code{statistic} column is expected to
+be R-squared in [0, 1].}
 
 \item{p_threshold}{Significance threshold for highlighting associations
-(default: 0.05).}
+(default: 0.05). Ignored when \code{association_results} lacks p-values.}
 
 \item{use_adjusted_p}{Logical. If \code{TRUE} (default), uses adjusted p-values
 for determining significance. If \code{FALSE}, uses raw p-values.}
 
 \item{show_all}{Logical. If \code{TRUE}, shows all tested associations. If
-\code{FALSE} (default), shows only significant associations.}
+\code{FALSE} (default), shows only significant associations. Silently
+overridden to \code{TRUE} when no p-values are available (e.g.,
+\code{method = "multivariate_shapley"} results), since there is no
+significance criterion to filter on.}
 
 \item{order_by_pc}{Integer specifying which PC to use for ordering variables
 by effect size (default: 1 for PC1).}
 
 \item{fill_limits}{Numeric vector of length 2 specifying the limits for the
-colour scale (default: \code{c(-1, 1)}). Values outside this range are squished
-to the nearest limit. For Spearman correlations, [-1, 1] is appropriate.
-For eta-squared values (Kruskal-Wallis), consider \code{c(0, 1)} or a narrower
-range based on observed values.}
+colour scale (default: \code{c(0, 1)}, the natural range of R-squared). Values
+outside this range are squished to the nearest limit. Narrow this range
+(e.g., \code{c(0, 0.5)}) to enhance contrast when most observed values are
+small.}
 
 \item{title}{Optional plot title. If \code{NULL}, no title is added.}
 }
@@ -44,17 +48,23 @@ meet the criteria for plotting.
 }
 \description{
 Creates a heatmap visualisation of associations between principal components
-and metadata variables, with significant associations highlighted.
+and metadata variables, with significant associations highlighted when
+p-values are available.
 }
 \details{
-The heatmap uses a diverging colour scale from blue (negative association)
-through white (no association) to red (positive association). Significant
-associations are highlighted with bold black borders and bold text.
+The heatmap uses a sequential viridis colour scale, since the underlying
+statistic (R-squared) is non-negative. Tile text colour switches between
+white (on darker, low-R-squared tiles) and black (on brighter,
+high-R-squared tiles) for legibility across the viridis range.
+
+When p-values are present (univariate results), significant associations
+are highlighted with bold black borders and bold text. When p-values are
+absent or all \code{NA} (multivariate Shapley results), every tile is plotted
+without significance highlighting -- the absence of bold borders is
+itself a visual cue that the values are a variance decomposition rather
+than per-cell tests.
 
 Effect sizes outside \code{fill_limits} are squished to the nearest limit.
-The default [-1, 1] is appropriate for Spearman correlations. For
-Kruskal-Wallis eta-squared values (which are always positive and typically
-small), consider adjusting the limits or using \code{c(0, 1)}.
 }
 \examples{
 \dontrun{
@@ -73,8 +83,18 @@ plot_pc_metadata_associations(associations, show_all = TRUE)
 # Plot only significant associations
 plot_pc_metadata_associations(associations, show_all = FALSE)
 
-# Use raw p-values instead of adjusted
-plot_pc_metadata_associations(associations, use_adjusted_p = FALSE)
+# Narrow the colour scale to enhance contrast for small effect sizes
+plot_pc_metadata_associations(associations, fill_limits = c(0, 0.5))
+
+# Multivariate Shapley results: no p-values, all tiles shown unfiltered
+shapley <- test_pc_metadata_associations(
+  pca_result = pca_result,
+  metadata = sample_metadata,
+  vars_to_test = c("age", "sex", "treatment"),
+  id_col = "sample_id",
+  method = "multivariate_shapley"
+)
+plot_pc_metadata_associations(shapley)
 }
 
 }

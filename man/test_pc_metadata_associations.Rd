@@ -12,7 +12,8 @@ test_pc_metadata_associations(
   n_pcs = 5,
   min_var_explained = 0,
   min_complete_pct = 0.7,
-  p_adjust_method = "BH"
+  p_adjust_method = "BH",
+  method = c("univariate", "multivariate_shapley")
 )
 }
 \arguments{
@@ -38,41 +39,62 @@ test PCs explaining meaningful variance.}
 for a variable to be tested (default: 0.7, i.e., 70\%).}
 
 \item{p_adjust_method}{Method for p-value adjustment. See \code{\link[stats:p.adjust]{stats::p.adjust()}}
-for options (default: "BH" for Benjamini-Hochberg).}
+for options (default: "BH" for Benjamini-Hochberg). Ignored when
+\code{method = "multivariate_shapley"}.}
+
+\item{method}{Either \code{"univariate"} (default) or \code{"multivariate_shapley"}.
+See Details.}
 }
 \value{
 A data frame with columns:
 \describe{
 \item{variable}{Name of the metadata variable}
 \item{principal_component}{Name of the principal component (e.g., "PC1")}
-\item{test_type}{Statistical test used ("Spearman" or "Kruskal-Wallis")}
-\item{statistic}{Effect size: Spearman's rho for continuous variables,
-eta-squared for categorical variables}
-\item{p_value}{Raw p-value from the statistical test}
+\item{test_type}{Method used: \code{"Univariate"} or \code{"Multivariate Shapley"}}
+\item{statistic}{Effect size in [0, 1] (see Details)}
+\item{p_value}{Raw p-value (univariate only; \code{NA} for shapley)}
 \item{n}{Number of complete observations used}
-\item{p_adj}{Adjusted p-value using the specified method}
+\item{p_adj}{Adjusted p-value (univariate only; \code{NA} for shapley)}
 }
 }
 \description{
-Tests associations between PCA coordinates and metadata variables using
-appropriate statistical tests: Spearman correlation for continuous variables
-and Kruskal-Wallis test for categorical variables.
+Tests associations between PCA coordinates and metadata variables, returning
+a non-negative effect size in [0, 1] for every (variable, PC) pair. Two
+methods are supported: a univariate per-variable linear model with an F-test
+p-value, and a multivariate Shapley-value (LMG) decomposition of the joint
+R-squared with no per-cell p-value.
 }
 \details{
-For continuous variables, Spearman's rank correlation is used, which is
-robust to non-normality and outliers. For categorical variables (factors
-or character vectors), the Kruskal-Wallis test is used with eta-squared
-as the effect size measure.
+\strong{Univariate.} For each (variable, PC) pair, fits a linear model
+\code{lm(PC ~ variable)} and returns the model R-squared as the effect size
+and the F-test p-value (from \code{anova(fit)$"Pr(>F)"[1]}) as the significance.
+Continuous variables yield squared Pearson correlation; categorical
+variables (factors or character vectors) yield eta-squared (one-way ANOVA),
+both on the same [0, 1] scale. Pairwise complete cases are used per cell.
+
+\strong{Multivariate Shapley.} For each PC, fits a single joint model
+\code{lm(PC ~ var1 + var2 + ...)} and decomposes the joint R-squared into
+per-variable contributions via the Shapley value (LMG metric: the average
+marginal R-squared contribution over all variable orderings), implemented
+by \code{\link[relaimpo:calc.relimp]{relaimpo::calc.relimp()}} with \code{type = "lmg"}. The contributions are
+non-negative and sum exactly to the joint R-squared. This addresses the
+confounding problem of the univariate approach (correlated variables both
+appearing associated with the same PC) by partitioning shared variance
+fairly between predictors. No per-variable p-value is returned: the LMG
+statistic is a descriptive decomposition and lacks a natural null
+distribution, so \code{p_value} and \code{p_adj} are \code{NA}. Listwise-complete cases
+are used per PC (samples with any NA across \code{vars_to_test} are dropped),
+and \code{vars_to_test} must contain at least two variables. Requires the
+\code{relaimpo} package.
 
 Variables with more than \code{1 - min_complete_pct} proportion of missing
-values are automatically excluded from testing.
+values are automatically excluded from testing in either mode.
 }
 \examples{
 \dontrun{
-# Run PCA with prcomp
 pca_result <- prcomp(t(expr_matrix), scale. = TRUE, center = TRUE)
 
-# Test associations
+# Default: univariate per-variable tests with p-values
 associations <- test_pc_metadata_associations(
   pca_result = pca_result,
   metadata = sample_metadata,
@@ -80,9 +102,16 @@ associations <- test_pc_metadata_associations(
   id_col = "sample_id",
   min_var_explained = 5
 )
-
-# View significant associations
 associations[associations$p_adj < 0.05, ]
+
+# Multivariate decomposition: handles confounding, no p-values
+shapley <- test_pc_metadata_associations(
+  pca_result = pca_result,
+  metadata = sample_metadata,
+  vars_to_test = c("age", "sex", "treatment", "bmi"),
+  id_col = "sample_id",
+  method = "multivariate_shapley"
+)
 }
 
 }
