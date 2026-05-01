@@ -544,12 +544,14 @@ plot_pc_metadata_associations <- function(association_results,
 }
 
 
-#' Test associations between variables and a binary group
+#' Standardised mean differences between a binary group and metadata variables
 #'
-#' Tests associations between metadata variables and a binary group variable
-#' using point-biserial correlation (equivalent to Pearson r with a binary
-#' outcome). Two-level factors and character variables are automatically
-#' encoded as 0/1 integers.
+#' Computes Hedges' g (a small-sample-bias-corrected standardised mean
+#' difference) between a binary group variable and each metadata variable.
+#' Continuous predictors use the standard d = (mean_case - mean_ctrl) / pooled
+#' SD, then Hedges' J correction. Two-level factors and character variables
+#' are auto-encoded as 0/1 and use the proportion-difference SMD
+#' (p_case - p_ctrl) / sqrt(p_pool * (1 - p_pool)) with the same J correction.
 #'
 #' @param metadata Data frame containing metadata variables to test.
 #' @param vars_to_test Character vector of variable names from `metadata` to
@@ -557,40 +559,53 @@ plot_pc_metadata_associations <- function(association_results,
 #' @param group_var Name of the binary group column in `metadata`.
 #'   Default: `"group"`.
 #' @param positive_level Character string specifying which level of `group_var`
-#'   is encoded as 1 (the "positive" or "case" class).
+#'   is treated as the "case" class. Effect-size signs are reported as
+#'   case minus control.
 #' @param positive_levels Optional named list mapping binary predictor variable
 #'   names to the level that should be encoded as 1 (e.g.
 #'   `list(treatment = "treated", smoker = "yes")`). Variables not listed fall
 #'   back to the alphabetical default (the second level of
-#'   `sort(unique(x))`). Use this to control the sign of `r` for binary
+#'   `sort(unique(x))`). Use this to control the sign of `hedges_g` for binary
 #'   character predictors where the alphabetical default produces a
 #'   counter-intuitive encoding. Default: `list()`.
 #' @param min_complete Minimum number of complete (non-NA) observations
 #'   required to test a variable. Default: 5.
-#' @param p_adjust_method Method for p-value adjustment passed to
-#'   [stats::p.adjust()]. Default: `"BH"`.
 #'
 #' @return A data frame with columns:
 #' \describe{
 #'   \item{variable}{Name of the metadata variable}
-#'   \item{r}{Pearson correlation coefficient}
-#'   \item{r_lo}{Lower bound of the 95% confidence interval for r}
-#'   \item{r_hi}{Upper bound of the 95% confidence interval for r}
-#'   \item{p_value}{Raw p-value from [stats::cor.test()]}
+#'   \item{type}{`"continuous"` or `"binary"`}
+#'   \item{hedges_g}{Hedges' g (signed; positive = higher in case)}
+#'   \item{g_lo}{Lower bound of the 95% confidence interval for g}
+#'   \item{g_hi}{Upper bound of the 95% confidence interval for g}
 #'   \item{n_complete}{Number of complete observations used}
-#'   \item{adj_p_value}{Adjusted p-value using the specified method}
 #' }
-#' Rows are ordered by ascending p-value.
+#' Rows are ordered by descending `|hedges_g|`.
 #'
 #' @details
-#' Variables that are factors or character vectors with exactly two unique
-#' levels are automatically encoded as 0/1 integers. By default the second
-#' level of `sort(unique(x))` becomes 1; use `positive_levels` to override
-#' this per variable when the alphabetical default produces a
-#' counter-intuitive sign (e.g. for `c("treated", "untreated")`,
-#' alphabetical order encodes `"untreated" = 1`). Variables with more than
-#' two levels are skipped with a message. Variables with zero variance or
-#' fewer than `min_complete` observations are also skipped.
+#' For continuous predictors:
+#' \deqn{d = (\bar{x}_{case} - \bar{x}_{ctrl}) /
+#'           \sqrt{((n_1 - 1) s_1^2 + (n_0 - 1) s_0^2) / (n_1 + n_0 - 2)}}
+#' For binary predictors (after 0/1 encoding via `positive_levels`):
+#' \deqn{d = (p_{case} - p_{ctrl}) / \sqrt{p_{pool} (1 - p_{pool})}}
+#' Hedges' J correction is then applied:
+#' \deqn{J = 1 - 3 / (4 \cdot df - 1), \qquad df = n_1 + n_0 - 2}
+#' \deqn{g = J \cdot d}
+#' The 95% CI uses Hedges' approximate SE
+#' \eqn{\sqrt{(n_1+n_0)/(n_1 n_0) + g^2 / (2 (n_1+n_0))}} times 1.96. The
+#' J correction is exact for continuous d under normal residuals; applying
+#' it to the binary SMD is a pragmatic approximation that gives a unified
+#' column at the cost of slight imprecision at very small n.
+#'
+#' Variables with more than two unique levels (categorical with > 2 levels)
+#' are skipped with a message. Variables with zero variance or fewer than
+#' `min_complete` complete observations are also skipped.
+#'
+#' No p-values are returned. The propensity-score literature (Austin 2009
+#' and others) argues that p-values are not informative for baseline imbalance
+#' assessment because their sensitivity to sample size obscures the question
+#' of imbalance magnitude. Use Hedges' g together with Cohen's rules of thumb
+#' (small \eqn{|g| \approx 0.2}, medium \eqn{0.5}, large \eqn{0.8}).
 #'
 #' @export
 #'
@@ -606,14 +621,13 @@ plot_pc_metadata_associations <- function(association_results,
 #'
 #' @seealso [plot_variable_group_associations()] for visualising results
 #'
-#' @importFrom stats cor.test p.adjust var
+#' @importFrom stats var sd
 test_variable_group_associations <- function(metadata,
                                               vars_to_test,
                                               group_var       = "group",
                                               positive_level,
                                               positive_levels = list(),
-                                              min_complete    = 5,
-                                              p_adjust_method = "BH") {
+                                              min_complete    = 5) {
 
   if (!group_var %in% names(metadata)) {
     stop("'", group_var, "' not found in metadata")
@@ -633,6 +647,7 @@ test_variable_group_associations <- function(metadata,
 
   for (var in vars_to_test) {
     x <- metadata[[var]]
+    type <- "continuous"
 
     # Auto-encode two-level factors/characters as 0/1
     if (is.factor(x) || is.character(x)) {
@@ -652,13 +667,14 @@ test_variable_group_associations <- function(metadata,
           message("Encoding binary variable '", var, "': '", positive, "' = 1")
         }
         x <- as.integer(x == positive)
+        type <- "binary"
       } else {
         message("Skipping '", var, "': non-binary categorical (", length(lvls), " levels)")
         next
       }
     }
 
-    complete  <- !is.na(x) & !is.na(group_binary)
+    complete   <- !is.na(x) & !is.na(group_binary)
     n_complete <- sum(complete)
 
     if (n_complete < min_complete) {
@@ -670,35 +686,48 @@ test_variable_group_associations <- function(metadata,
       next
     }
 
-    result <- tryCatch({
-      ct <- stats::cor.test(x[complete], group_binary[complete], method = "pearson")
-      data.frame(
-        variable   = var,
-        r          = as.numeric(ct$estimate),
-        r_lo       = ct$conf.int[1],
-        r_hi       = ct$conf.int[2],
-        p_value    = ct$p.value,
-        n_complete = n_complete,
-        stringsAsFactors = FALSE
-      )
-    }, error = function(e) {
-      message("Skipping '", var, "': ", e$message)
-      NULL
-    })
-
-    if (!is.null(result)) {
-      results_list[[length(results_list) + 1]] <- result
+    xc <- x[complete]
+    gc <- group_binary[complete]
+    n1 <- sum(gc == 1)
+    n0 <- sum(gc == 0)
+    if (n1 < 2 || n0 < 2) {
+      message("Skipping '", var, "': fewer than 2 observations in one group")
+      next
     }
+
+    if (type == "continuous") {
+      m1 <- mean(xc[gc == 1]); m0 <- mean(xc[gc == 0])
+      s1 <- stats::sd(xc[gc == 1]); s0 <- stats::sd(xc[gc == 0])
+      pooled_sd <- sqrt(((n1 - 1) * s1^2 + (n0 - 1) * s0^2) / (n1 + n0 - 2))
+      d <- (m1 - m0) / pooled_sd
+    } else {
+      p1 <- mean(xc[gc == 1]); p0 <- mean(xc[gc == 0]); p_pool <- mean(xc)
+      d <- (p1 - p0) / sqrt(p_pool * (1 - p_pool))
+    }
+
+    df <- n1 + n0 - 2
+    J  <- 1 - 3 / (4 * df - 1)
+    g  <- J * d
+    se <- sqrt((n1 + n0) / (n1 * n0) + g^2 / (2 * (n1 + n0)))
+
+    results_list[[length(results_list) + 1]] <- data.frame(
+      variable   = var,
+      type       = type,
+      hedges_g   = g,
+      g_lo       = g - 1.96 * se,
+      g_hi       = g + 1.96 * se,
+      n_complete = n_complete,
+      stringsAsFactors = FALSE
+    )
   }
 
   if (length(results_list) == 0) {
-    warning("No associations could be tested")
+    warning("No associations could be computed")
     return(data.frame())
   }
 
   results_df <- do.call(rbind, results_list)
-  results_df$adj_p_value <- stats::p.adjust(results_df$p_value, method = p_adjust_method)
-  results_df <- results_df[order(results_df$p_value), ]
+  results_df <- results_df[order(-abs(results_df$hedges_g)), ]
   rownames(results_df) <- NULL
 
   return(results_df)
@@ -707,22 +736,15 @@ test_variable_group_associations <- function(metadata,
 
 #' Plot variable-group associations as a forest plot
 #'
-#' Creates a forest plot of point-biserial correlations between metadata
-#' variables and a binary group, with 95% confidence intervals and optional
-#' significance colouring.
+#' Creates a forest plot of Hedges' g effect sizes between metadata variables
+#' and a binary group, with 95% confidence intervals. Vertical reference lines
+#' are drawn at Cohen's small (\eqn{\pm 0.2}) and medium (\eqn{\pm 0.5})
+#' thresholds.
 #'
 #' @param association_results Data frame of results from
 #'   [test_variable_group_associations()].
-#' @param p_threshold Significance threshold for colouring associations
-#'   (default: 0.05).
-#' @param use_adjusted_p Logical. If `TRUE` (default), uses adjusted p-values
-#'   for determining significance. If `FALSE`, uses raw p-values.
-#' @param group_var Character string used in the x-axis label. Should match
-#'   the `group_var` argument passed to [test_variable_group_associations()].
-#'   Default: `"group"`.
-#' @param positive_level Character string for the x-axis label indicating
-#'   which group level was encoded as 1. If `NULL`, the label omits this
-#'   detail. Default: `NULL`.
+#' @param show_thresholds Logical. If `TRUE` (default), draws Cohen's small
+#'   (\eqn{\pm 0.2}) and medium (\eqn{\pm 0.5}) reference lines.
 #'
 #' @return A ggplot2 object.
 #'
@@ -737,57 +759,58 @@ test_variable_group_associations <- function(metadata,
 #'   positive_level = "heart_failure"
 #' )
 #'
-#' plot_variable_group_associations(
-#'   results,
-#'   group_var      = "group",
-#'   positive_level = "heart_failure"
-#' )
+#' plot_variable_group_associations(results)
 #' }
 #'
 #' @seealso [test_variable_group_associations()] for generating the input data
 #'
-#' @importFrom ggplot2 ggplot aes geom_point geom_errorbar geom_vline scale_colour_manual labs
+#' @importFrom ggplot2 ggplot aes geom_point geom_errorbar geom_vline labs
 #' @importFrom rlang .data
 #' @importFrom stats reorder
 plot_variable_group_associations <- function(association_results,
-                                              p_threshold    = 0.05,
-                                              use_adjusted_p = TRUE,
-                                              group_var      = "group",
-                                              positive_level = NULL) {
+                                              show_thresholds = TRUE) {
 
   if (nrow(association_results) == 0) {
     warning("No association results to plot")
     return(NULL)
   }
 
-  p_col <- if (use_adjusted_p) "adj_p_value" else "p_value"
-
-  plot_data <- association_results
-  plot_data$significant <- plot_data[[p_col]] < p_threshold
-  plot_data$variable    <- reorder(plot_data$variable, plot_data$r)
-
-  x_label <- if (!is.null(positive_level)) {
-    paste0("Pearson r with ", group_var, " (", positive_level, " = 1)")
-  } else {
-    paste0("Pearson r with ", group_var)
+  required_cols <- c("variable", "hedges_g", "g_lo", "g_hi")
+  missing_cols <- setdiff(required_cols, names(association_results))
+  if (length(missing_cols) > 0) {
+    stop("association_results is missing columns: ",
+         paste(missing_cols, collapse = ", "),
+         ". Did you generate it with test_variable_group_associations()?")
   }
 
-  legend_label <- paste0(if (use_adjusted_p) "adj. " else "", "p < ", p_threshold)
+  plot_data <- association_results
+  plot_data$variable <- reorder(plot_data$variable, plot_data$hedges_g)
 
-  ggplot2::ggplot(plot_data,
-                  ggplot2::aes(x = .data$r, y = .data$variable,
-                               colour = .data$significant)) +
-    ggplot2::geom_point() +
+  p <- ggplot2::ggplot(plot_data,
+                       ggplot2::aes(x = .data$hedges_g, y = .data$variable)) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40")
+
+  if (show_thresholds) {
+    p <- p +
+      ggplot2::geom_vline(xintercept = c(-0.5, 0.5),
+                          linetype = "dotted", colour = "grey60") +
+      ggplot2::geom_vline(xintercept = c(-0.2, 0.2),
+                          linetype = "dotted", colour = "grey75")
+  }
+
+  p +
     ggplot2::geom_errorbar(
-      ggplot2::aes(xmin = .data$r_lo, xmax = .data$r_hi),
-      width = 0.2, orientation = "y"
+      ggplot2::aes(xmin = .data$g_lo, xmax = .data$g_hi),
+      width = 0.2, orientation = "y", colour = "grey20"
     ) +
-    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
-    ggplot2::scale_colour_manual(
-      values = c("FALSE" = "grey50", "TRUE" = "red"),
-      name   = legend_label
+    ggplot2::geom_point(size = 2.5, colour = "grey20") +
+    ggplot2::labs(
+      x = "Hedges' g",
+      y = NULL,
+      caption = if (show_thresholds)
+        "Reference lines: Cohen's small (±0.2) and medium (±0.5)"
+        else NULL
     ) +
-    ggplot2::labs(x = x_label, y = NULL) +
     theme_jm()
 }
 

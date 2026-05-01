@@ -4,39 +4,23 @@
 \alias{plot_variable_group_associations}
 \title{Plot variable-group associations as a forest plot}
 \usage{
-plot_variable_group_associations(
-  association_results,
-  p_threshold = 0.05,
-  use_adjusted_p = TRUE,
-  group_var = "group",
-  positive_level = NULL
-)
+plot_variable_group_associations(association_results, show_thresholds = TRUE)
 }
 \arguments{
 \item{association_results}{Data frame of results from
 \code{\link[=test_variable_group_associations]{test_variable_group_associations()}}.}
 
-\item{p_threshold}{Significance threshold for colouring associations
-(default: 0.05).}
-
-\item{use_adjusted_p}{Logical. If \code{TRUE} (default), uses adjusted p-values
-for determining significance. If \code{FALSE}, uses raw p-values.}
-
-\item{group_var}{Character string used in the x-axis label. Should match
-the \code{group_var} argument passed to \code{\link[=test_variable_group_associations]{test_variable_group_associations()}}.
-Default: \code{"group"}.}
-
-\item{positive_level}{Character string for the x-axis label indicating
-which group level was encoded as 1. If \code{NULL}, the label omits this
-detail. Default: \code{NULL}.}
+\item{show_thresholds}{Logical. If \code{TRUE} (default), draws Cohen's small
+(\eqn{\pm 0.2}) and medium (\eqn{\pm 0.5}) reference lines.}
 }
 \value{
 A ggplot2 object.
 }
 \description{
-Creates a forest plot of point-biserial correlations between metadata
-variables and a binary group, with 95\% confidence intervals and optional
-significance colouring.
+Creates a forest plot of Hedges' g effect sizes between metadata variables
+and a binary group, with 95\% confidence intervals. Vertical reference lines
+are drawn at Cohen's small (\eqn{\pm 0.2}) and medium (\eqn{\pm 0.5})
+thresholds.
 }
 \examples{
 \dontrun{
@@ -47,11 +31,7 @@ results <- test_variable_group_associations(
   positive_level = "heart_failure"
 )
 
-plot_variable_group_associations(
-  results,
-  group_var      = "group",
-  positive_level = "heart_failure"
-)
+plot_variable_group_associations(results)
 }
 
 }

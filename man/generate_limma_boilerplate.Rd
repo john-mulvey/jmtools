@@ -61,10 +61,11 @@ code. Default: 0.05.}
 (ANOVA) testing for any differences between groups. Default: \code{FALSE}.}
 
 \item{include_effect_size}{Logical. If \code{TRUE}, includes code to calculate
-Cohen's d (standardised effect size) for pairwise contrasts. Uses the
-moderated posterior SD from limma's empirical Bayes framework, which
-already addresses small-sample variance instability (hence Hedge's g
-correction is not applied). Default: \code{TRUE}.}
+Hedges' g (standardised effect size with small-sample bias correction)
+for pairwise contrasts. Uses the moderated posterior SD from limma's
+empirical Bayes framework as a stabilised denominator and applies
+Hedges' J correction (using the moderated total degrees of freedom)
+to remove the upward bias of Cohen's d at small n. Default: \code{TRUE}.}
 }
 \value{
 Returns \code{invisible(NULL)}. The function prints code to the console

@@ -2,7 +2,7 @@
 % Please edit documentation in R/eda.R
 \name{test_variable_group_associations}
 \alias{test_variable_group_associations}
-\title{Test associations between variables and a binary group}
+\title{Standardised mean differences between a binary group and metadata variables}
 \usage{
 test_variable_group_associations(
   metadata,
@@ -10,8 +10,7 @@ test_variable_group_associations(
   group_var = "group",
   positive_level,
   positive_levels = list(),
-  min_complete = 5,
-  p_adjust_method = "BH"
+  min_complete = 5
 )
 }
 \arguments{
@@ -24,50 +23,64 @@ test for association with the group variable.}
 Default: \code{"group"}.}
 
 \item{positive_level}{Character string specifying which level of \code{group_var}
-is encoded as 1 (the "positive" or "case" class).}
+is treated as the "case" class. Effect-size signs are reported as
+case minus control.}
 
 \item{positive_levels}{Optional named list mapping binary predictor variable
 names to the level that should be encoded as 1 (e.g.
 \code{list(treatment = "treated", smoker = "yes")}). Variables not listed fall
 back to the alphabetical default (the second level of
-\code{sort(unique(x))}). Use this to control the sign of \code{r} for binary
+\code{sort(unique(x))}). Use this to control the sign of \code{hedges_g} for binary
 character predictors where the alphabetical default produces a
 counter-intuitive encoding. Default: \code{list()}.}
 
 \item{min_complete}{Minimum number of complete (non-NA) observations
 required to test a variable. Default: 5.}
-
-\item{p_adjust_method}{Method for p-value adjustment passed to
-\code{\link[stats:p.adjust]{stats::p.adjust()}}. Default: \code{"BH"}.}
 }
 \value{
 A data frame with columns:
 \describe{
 \item{variable}{Name of the metadata variable}
-\item{r}{Pearson correlation coefficient}
-\item{r_lo}{Lower bound of the 95\% confidence interval for r}
-\item{r_hi}{Upper bound of the 95\% confidence interval for r}
-\item{p_value}{Raw p-value from \code{\link[stats:cor.test]{stats::cor.test()}}}
+\item{type}{\code{"continuous"} or \code{"binary"}}
+\item{hedges_g}{Hedges' g (signed; positive = higher in case)}
+\item{g_lo}{Lower bound of the 95\% confidence interval for g}
+\item{g_hi}{Upper bound of the 95\% confidence interval for g}
 \item{n_complete}{Number of complete observations used}
-\item{adj_p_value}{Adjusted p-value using the specified method}
 }
-Rows are ordered by ascending p-value.
+Rows are ordered by descending \verb{|hedges_g|}.
 }
 \description{
-Tests associations between metadata variables and a binary group variable
-using point-biserial correlation (equivalent to Pearson r with a binary
-outcome). Two-level factors and character variables are automatically
-encoded as 0/1 integers.
+Computes Hedges' g (a small-sample-bias-corrected standardised mean
+difference) between a binary group variable and each metadata variable.
+Continuous predictors use the standard d = (mean_case - mean_ctrl) / pooled
+SD, then Hedges' J correction. Two-level factors and character variables
+are auto-encoded as 0/1 and use the proportion-difference SMD
+(p_case - p_ctrl) / sqrt(p_pool * (1 - p_pool)) with the same J correction.
 }
 \details{
-Variables that are factors or character vectors with exactly two unique
-levels are automatically encoded as 0/1 integers. By default the second
-level of \code{sort(unique(x))} becomes 1; use \code{positive_levels} to override
-this per variable when the alphabetical default produces a
-counter-intuitive sign (e.g. for \code{c("treated", "untreated")},
-alphabetical order encodes \code{"untreated" = 1}). Variables with more than
-two levels are skipped with a message. Variables with zero variance or
-fewer than \code{min_complete} observations are also skipped.
+For continuous predictors:
+\deqn{d = (\bar{x}_{case} - \bar{x}_{ctrl}) /
+          \sqrt{((n_1 - 1) s_1^2 + (n_0 - 1) s_0^2) / (n_1 + n_0 - 2)}}
+For binary predictors (after 0/1 encoding via \code{positive_levels}):
+\deqn{d = (p_{case} - p_{ctrl}) / \sqrt{p_{pool} (1 - p_{pool})}}
+Hedges' J correction is then applied:
+\deqn{J = 1 - 3 / (4 \cdot df - 1), \qquad df = n_1 + n_0 - 2}
+\deqn{g = J \cdot d}
+The 95\% CI uses Hedges' approximate SE
+\eqn{\sqrt{(n_1+n_0)/(n_1 n_0) + g^2 / (2 (n_1+n_0))}} times 1.96. The
+J correction is exact for continuous d under normal residuals; applying
+it to the binary SMD is a pragmatic approximation that gives a unified
+column at the cost of slight imprecision at very small n.
+
+Variables with more than two unique levels (categorical with > 2 levels)
+are skipped with a message. Variables with zero variance or fewer than
+\code{min_complete} complete observations are also skipped.
+
+No p-values are returned. The propensity-score literature (Austin 2009
+and others) argues that p-values are not informative for baseline imbalance
+assessment because their sensitivity to sample size obscures the question
+of imbalance magnitude. Use Hedges' g together with Cohen's rules of thumb
+(small \eqn{|g| \approx 0.2}, medium \eqn{0.5}, large \eqn{0.8}).
 }
 \examples{
 \dontrun{
