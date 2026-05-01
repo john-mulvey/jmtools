@@ -71,6 +71,8 @@ and the F-test p-value (from \code{anova(fit)$"Pr(>F)"[1]}) as the significance.
 Continuous variables yield squared Pearson correlation; categorical
 variables (factors or character vectors) yield eta-squared (one-way ANOVA),
 both on the same [0, 1] scale. Pairwise complete cases are used per cell.
+The F-test p-value assumes approximately normal residuals; for categorical
+variables with strongly unbalanced groups this can be sensitive at small n.
 
 \strong{Multivariate Shapley.} For each PC, fits a single joint model
 \code{lm(PC ~ var1 + var2 + ...)} and decomposes the joint R-squared into

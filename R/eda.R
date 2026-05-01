@@ -47,6 +47,8 @@
 #' Continuous variables yield squared Pearson correlation; categorical
 #' variables (factors or character vectors) yield eta-squared (one-way ANOVA),
 #' both on the same \[0, 1\] scale. Pairwise complete cases are used per cell.
+#' The F-test p-value assumes approximately normal residuals; for categorical
+#' variables with strongly unbalanced groups this can be sensitive at small n.
 #'
 #' \strong{Multivariate Shapley.} For each PC, fits a single joint model
 #' `lm(PC ~ var1 + var2 + ...)` and decomposes the joint R-squared into
@@ -154,6 +156,19 @@ test_pc_metadata_associations <- function(pca_result,
 
   # Merge with metadata
   combined_data <- merge(pc_data, metadata, by = id_col)
+
+  # Report sample drops from the merge so a mismatch between PCA scores and
+  # metadata sample sets is visible rather than silent.
+  n_pca_samples <- nrow(pc_data)
+  n_meta_samples <- nrow(metadata)
+  n_kept <- nrow(combined_data)
+  if (n_kept < n_pca_samples || n_kept < n_meta_samples) {
+    message("Merging PCA scores and metadata: ", n_kept,
+            " samples retained (",
+            n_pca_samples - n_kept, " PCA samples and ",
+            n_meta_samples - n_kept, " metadata samples ",
+            "without a match were dropped).")
+  }
 
   # Filter variables by completeness and existence
   vars_to_test <- vars_to_test[vars_to_test %in% names(combined_data)]
