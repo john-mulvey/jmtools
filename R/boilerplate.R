@@ -79,6 +79,21 @@ library(GGally)
 
 # Transpose so samples are rows, run PCA
 pca_input <- t({data_name})
+
+# PCA requires complete data; restrict to features quantified in all samples.
+# Bear in mind that this biases toward consistently detected (typically higher-
+# abundance) features. For alternatives, replace this step with imputation
+# (e.g. impute::impute.knn) or a missing-aware PCA (pcaMethods::pca with
+# method = "ppca" or "nipals").
+n_features_before <- ncol(pca_input)
+pca_input <- pca_input[, colSums(is.na(pca_input)) == 0, drop = FALSE]
+n_features_after <- ncol(pca_input)
+if (n_features_after < n_features_before) {{
+  message("Dropped ", n_features_before - n_features_after,
+          " features with any NA values; ", n_features_after,
+          " complete features retained for PCA.")
+}}
+
 pca_result <- prcomp(pca_input, scale. = {toupper(scale)}, center = {toupper(center)})
 
 # Extract scores and combine with metadata
@@ -182,10 +197,11 @@ ggpairs(
 #' @param include_anova Logical. If `TRUE`, includes code for an F-test
 #'   (ANOVA) testing for any differences between groups. Default: `FALSE`.
 #' @param include_effect_size Logical. If `TRUE`, includes code to calculate
-#'   Cohen's d (standardised effect size) for pairwise contrasts. Uses the
-#'   moderated posterior SD from limma's empirical Bayes framework, which
-#'   already addresses small-sample variance instability (hence Hedge's g
-#'   correction is not applied). Default: `TRUE`.
+#'   Hedges' g (standardised effect size with small-sample bias correction)
+#'   for pairwise contrasts. Uses the moderated posterior SD from limma's
+#'   empirical Bayes framework as a stabilised denominator and applies
+#'   Hedges' J correction (using the moderated total degrees of freedom)
+#'   to remove the upward bias of Cohen's d at small n. Default: `TRUE`.
 #'
 #' @return Returns `invisible(NULL)`. The function prints code to the console
 #'   which can be copied into an analysis script.
@@ -283,20 +299,25 @@ generate_limma_boilerplate <- function(data_name,
   if (include_effect_size && !is.null(contrast)) {
     effect_size_code <- glue::glue('
 
-# Calculate Cohen\'s d (standardised effect size)
-# Uses moderated posterior SD for consistency with limma\'s empirical Bayes framework
-# Note: Hedge\'s g (which adds a small-sample correction) is not used here because
-# the empirical Bayes shrinkage already addresses small-sample variance instability
+# Calculate Hedges\' g (standardised effect size with small-sample bias correction)
+# Numerator: estimated contrast. Denominator: moderated posterior SD from
+# limma\'s empirical Bayes framework, which stabilises per-feature variance
+# estimates by borrowing across features. Hedges\' J factor then corrects
+# Cohen\'s d for its upward small-sample bias as an estimator of the
+# population standardised effect, using the moderated total degrees of
+# freedom (df.total = df.prior + df.residual).
 moderated_sd <- sqrt(fit_contrasts$s2.post)
-cohens_d_values <- fit_contrasts$coefficients[, "contrast_of_interest"] / moderated_sd
+cohens_d <- fit_contrasts$coefficients[, "contrast_of_interest"] / moderated_sd
+hedges_correction <- 1 - 3 / (4 * fit_contrasts$df.total - 1)
+hedges_g_values <- cohens_d * hedges_correction
 
 # Add to results (match by feature ID)
-cohens_d_df <- data.frame(
-  feature_id = names(cohens_d_values),
-  cohens_d = as.numeric(cohens_d_values)
+hedges_g_df <- data.frame(
+  feature_id = names(hedges_g_values),
+  hedges_g = as.numeric(hedges_g_values)
 )
-names(cohens_d_df)[1] <- "{feature_id_col}"
-{output_name} <- dplyr::left_join({output_name}, cohens_d_df, by = "{feature_id_col}")')
+names(hedges_g_df)[1] <- "{feature_id_col}"
+{output_name} <- dplyr::left_join({output_name}, hedges_g_df, by = "{feature_id_col}")')
   } else {
     effect_size_code <- ""
   }
@@ -514,11 +535,12 @@ genes_to_label <- c(
 sig_pvals <- {results_name} |>
   dplyr::filter({signif_col} == TRUE) |>
   dplyr::pull({pval_col})
-highest_sig_pval <- if (length(sig_pvals) > 0) max(sig_pvals, na.rm = TRUE) else 1
+has_sig <- length(sig_pvals) > 0
+highest_sig_pval <- if (has_sig) max(sig_pvals, na.rm = TRUE) else NA_real_
 
 ggplot({results_name}, aes(x = {logfc_col}, y = -log10({pval_col}))) +
   geom_vline(xintercept = c(-fc_threshold, fc_threshold), linetype = "dashed", colour = "grey60") +
-  geom_hline(yintercept = -log10(highest_sig_pval), linetype = "dashed", colour = "grey60") +
+  (if (has_sig) geom_hline(yintercept = -log10(highest_sig_pval), linetype = "dashed", colour = "grey60") else NULL) +
   geom_pointdensity(size = 1, alpha = 0.7, show.legend = FALSE) +
   scale_colour_gradient(low = "#6baed6", high = "#08306b") +
   geom_point(
@@ -533,7 +555,8 @@ ggplot({results_name}, aes(x = {logfc_col}, y = -log10({pval_col}))) +
   labs(
     x = expression(log[2]~fold~change),
     y = expression(-log[10]~p-value),
-    title = "{title}: Volcano Plot"
+    title = "{title}: Volcano Plot",
+    subtitle = if (!has_sig) "No features pass the FDR threshold" else NULL
   ) +
   theme_jm()
 
