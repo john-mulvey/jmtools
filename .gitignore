@@ -33,5 +33,9 @@ docs/
 *.tar.gz
 *.zip
 
+# Rendered example outputs
+inst/examples/*.html
+inst/examples/*_files/
+
 # Mac OS
 .DS_Store

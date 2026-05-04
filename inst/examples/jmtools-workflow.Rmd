@@ -1,6 +1,12 @@
 ---
 title: "Proteomics Analysis Workflow with jmtools"
-output: rmarkdown::html_vignette
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    theme: flatly
+    highlight: tango
 vignette: >
   %\VignetteIndexEntry{Proteomics Analysis Workflow with jmtools}
   %\VignetteEngine{knitr::rmarkdown}
@@ -32,7 +38,7 @@ covering:
 ## Setup
 
 ```{r load-packages}
-#library(jmtools)
+library(jmtools)
 library(dplyr)
 library(tidyr)
 library(tibble)
@@ -379,11 +385,7 @@ confound_results
 ```
 
 ```{r confounding-plot, message=FALSE, warning=FALSE}
-plot_variable_group_associations(
-  confound_results,
-  group_var      = "group",
-  positive_level = "heart_failure"
-)
+plot_variable_group_associations(confound_results)
 ```
 
 ## Differential Expression Analysis with limma
