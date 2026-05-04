@@ -4,7 +4,11 @@
 \alias{plot_variable_group_associations}
 \title{Plot variable-group associations as a forest plot}
 \usage{
-plot_variable_group_associations(association_results, show_thresholds = TRUE)
+plot_variable_group_associations(
+  association_results,
+  show_thresholds = TRUE,
+  colour_by = c("none", "significance")
+)
 }
 \arguments{
 \item{association_results}{Data frame of results from
@@ -12,6 +16,14 @@ plot_variable_group_associations(association_results, show_thresholds = TRUE)
 
 \item{show_thresholds}{Logical. If \code{TRUE} (default), draws Cohen's small
 (\eqn{\pm 0.2}) and medium (\eqn{\pm 0.5}) reference lines.}
+
+\item{colour_by}{Character. Controls point and error-bar colour. Either
+\code{"none"} (default; all elements grey) or \code{"significance"} (points and
+error bars coloured by \code{adj_p_value < 0.05}, requires the
+\code{adj_p_value} column from \code{\link[=test_variable_group_associations]{test_variable_group_associations()}}). Use
+deliberately - magnitude (Hedges' g) is the more appropriate basis for
+assessing baseline imbalance; see the Details of
+\code{\link[=test_variable_group_associations]{test_variable_group_associations()}}.}
 }
 \value{
 A ggplot2 object.

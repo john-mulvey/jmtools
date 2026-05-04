@@ -578,6 +578,11 @@ plot_pc_metadata_associations <- function(association_results,
 #'   \item{hedges_g}{Hedges' g (signed; positive = higher in case)}
 #'   \item{g_lo}{Lower bound of the 95% confidence interval for g}
 #'   \item{g_hi}{Upper bound of the 95% confidence interval for g}
+#'   \item{p_value}{Two-sided Wald p-value for \eqn{g = 0} from the
+#'     asymptotic normal approximation \eqn{z = g / SE(g)}. Provided for
+#'     compatibility with downstream tooling; see Details for caveats.}
+#'   \item{adj_p_value}{Benjamini-Hochberg adjusted p-value across the
+#'     variables tested.}
 #'   \item{n_complete}{Number of complete observations used}
 #' }
 #' Rows are ordered by descending `|hedges_g|`.
@@ -601,11 +606,15 @@ plot_pc_metadata_associations <- function(association_results,
 #' are skipped with a message. Variables with zero variance or fewer than
 #' `min_complete` complete observations are also skipped.
 #'
-#' No p-values are returned. The propensity-score literature (Austin 2009
-#' and others) argues that p-values are not informative for baseline imbalance
-#' assessment because their sensitivity to sample size obscures the question
-#' of imbalance magnitude. Use Hedges' g together with Cohen's rules of thumb
-#' (small \eqn{|g| \approx 0.2}, medium \eqn{0.5}, large \eqn{0.8}).
+#' A two-sided Wald p-value (`p_value`) and Benjamini-Hochberg adjusted
+#' p-value (`adj_p_value`) across the variables tested are returned
+#' alongside the effect size, but the propensity-score literature (Austin
+#' 2009 and others) argues that p-values are not informative for baseline
+#' imbalance assessment because their sensitivity to sample size obscures
+#' the question of imbalance magnitude. Prefer Hedges' g together with
+#' Cohen's rules of thumb (small \eqn{|g| \approx 0.2}, medium \eqn{0.5},
+#' large \eqn{0.8}); treat `p_value` and `adj_p_value` as secondary
+#' diagnostics only.
 #'
 #' @export
 #'
@@ -621,7 +630,7 @@ plot_pc_metadata_associations <- function(association_results,
 #'
 #' @seealso [plot_variable_group_associations()] for visualising results
 #'
-#' @importFrom stats var sd
+#' @importFrom stats var sd pnorm p.adjust
 test_variable_group_associations <- function(metadata,
                                               vars_to_test,
                                               group_var       = "group",
@@ -716,6 +725,7 @@ test_variable_group_associations <- function(metadata,
       hedges_g   = g,
       g_lo       = g - 1.96 * se,
       g_hi       = g + 1.96 * se,
+      p_value    = 2 * stats::pnorm(-abs(g / se)),
       n_complete = n_complete,
       stringsAsFactors = FALSE
     )
@@ -727,6 +737,9 @@ test_variable_group_associations <- function(metadata,
   }
 
   results_df <- do.call(rbind, results_list)
+  results_df$adj_p_value <- stats::p.adjust(results_df$p_value, method = "BH")
+  results_df <- results_df[, c("variable", "type", "hedges_g", "g_lo", "g_hi",
+                               "p_value", "adj_p_value", "n_complete")]
   results_df <- results_df[order(-abs(results_df$hedges_g)), ]
   rownames(results_df) <- NULL
 
@@ -745,6 +758,13 @@ test_variable_group_associations <- function(metadata,
 #'   [test_variable_group_associations()].
 #' @param show_thresholds Logical. If `TRUE` (default), draws Cohen's small
 #'   (\eqn{\pm 0.2}) and medium (\eqn{\pm 0.5}) reference lines.
+#' @param colour_by Character. Controls point and error-bar colour. Either
+#'   `"none"` (default; all elements grey) or `"significance"` (points and
+#'   error bars coloured by `adj_p_value < 0.05`, requires the
+#'   `adj_p_value` column from [test_variable_group_associations()]). Use
+#'   deliberately - magnitude (Hedges' g) is the more appropriate basis for
+#'   assessing baseline imbalance; see the Details of
+#'   [test_variable_group_associations()].
 #'
 #' @return A ggplot2 object.
 #'
@@ -764,11 +784,14 @@ test_variable_group_associations <- function(metadata,
 #'
 #' @seealso [test_variable_group_associations()] for generating the input data
 #'
-#' @importFrom ggplot2 ggplot aes geom_point geom_errorbar geom_vline labs
+#' @importFrom ggplot2 ggplot aes geom_point geom_errorbar geom_vline labs scale_colour_manual
 #' @importFrom rlang .data
 #' @importFrom stats reorder
 plot_variable_group_associations <- function(association_results,
-                                              show_thresholds = TRUE) {
+                                              show_thresholds = TRUE,
+                                              colour_by       = c("none", "significance")) {
+
+  colour_by <- match.arg(colour_by)
 
   if (nrow(association_results) == 0) {
     warning("No association results to plot")
@@ -776,6 +799,9 @@ plot_variable_group_associations <- function(association_results,
   }
 
   required_cols <- c("variable", "hedges_g", "g_lo", "g_hi")
+  if (colour_by == "significance") {
+    required_cols <- c(required_cols, "adj_p_value")
+  }
   missing_cols <- setdiff(required_cols, names(association_results))
   if (length(missing_cols) > 0) {
     stop("association_results is missing columns: ",
@@ -785,6 +811,10 @@ plot_variable_group_associations <- function(association_results,
 
   plot_data <- association_results
   plot_data$variable <- reorder(plot_data$variable, plot_data$hedges_g)
+
+  if (colour_by == "significance") {
+    plot_data$significant <- plot_data$adj_p_value < 0.05
+  }
 
   p <- ggplot2::ggplot(plot_data,
                        ggplot2::aes(x = .data$hedges_g, y = .data$variable)) +
@@ -798,12 +828,31 @@ plot_variable_group_associations <- function(association_results,
                           linetype = "dotted", colour = "grey75")
   }
 
+  if (colour_by == "significance") {
+    p <- p +
+      ggplot2::geom_errorbar(
+        ggplot2::aes(xmin = .data$g_lo, xmax = .data$g_hi,
+                     colour = .data$significant),
+        width = 0.2, orientation = "y"
+      ) +
+      ggplot2::geom_point(
+        ggplot2::aes(colour = .data$significant),
+        size = 2.5
+      ) +
+      ggplot2::scale_colour_manual(
+        values = c(`TRUE` = "red", `FALSE` = "grey50"),
+        name   = "Significant"
+      )
+  } else {
+    p <- p +
+      ggplot2::geom_errorbar(
+        ggplot2::aes(xmin = .data$g_lo, xmax = .data$g_hi),
+        width = 0.2, orientation = "y", colour = "grey20"
+      ) +
+      ggplot2::geom_point(size = 2.5, colour = "grey20")
+  }
+
   p +
-    ggplot2::geom_errorbar(
-      ggplot2::aes(xmin = .data$g_lo, xmax = .data$g_hi),
-      width = 0.2, orientation = "y", colour = "grey20"
-    ) +
-    ggplot2::geom_point(size = 2.5, colour = "grey20") +
     ggplot2::labs(
       x = "Hedges' g",
       y = NULL,

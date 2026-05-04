@@ -45,6 +45,11 @@ A data frame with columns:
 \item{hedges_g}{Hedges' g (signed; positive = higher in case)}
 \item{g_lo}{Lower bound of the 95\% confidence interval for g}
 \item{g_hi}{Upper bound of the 95\% confidence interval for g}
+\item{p_value}{Two-sided Wald p-value for \eqn{g = 0} from the
+asymptotic normal approximation \eqn{z = g / SE(g)}. Provided for
+compatibility with downstream tooling; see Details for caveats.}
+\item{adj_p_value}{Benjamini-Hochberg adjusted p-value across the
+variables tested.}
 \item{n_complete}{Number of complete observations used}
 }
 Rows are ordered by descending \verb{|hedges_g|}.
@@ -76,11 +81,15 @@ Variables with more than two unique levels (categorical with > 2 levels)
 are skipped with a message. Variables with zero variance or fewer than
 \code{min_complete} complete observations are also skipped.
 
-No p-values are returned. The propensity-score literature (Austin 2009
-and others) argues that p-values are not informative for baseline imbalance
-assessment because their sensitivity to sample size obscures the question
-of imbalance magnitude. Use Hedges' g together with Cohen's rules of thumb
-(small \eqn{|g| \approx 0.2}, medium \eqn{0.5}, large \eqn{0.8}).
+A two-sided Wald p-value (\code{p_value}) and Benjamini-Hochberg adjusted
+p-value (\code{adj_p_value}) across the variables tested are returned
+alongside the effect size, but the propensity-score literature (Austin
+2009 and others) argues that p-values are not informative for baseline
+imbalance assessment because their sensitivity to sample size obscures
+the question of imbalance magnitude. Prefer Hedges' g together with
+Cohen's rules of thumb (small \eqn{|g| \approx 0.2}, medium \eqn{0.5},
+large \eqn{0.8}); treat \code{p_value} and \code{adj_p_value} as secondary
+diagnostics only.
 }
 \examples{
 \dontrun{
