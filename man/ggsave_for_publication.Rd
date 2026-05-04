@@ -13,6 +13,7 @@ ggsave_for_publication(
   height = NULL,
   units = "mm",
   bg = "transparent",
+  publication_text = TRUE,
   ...
 )
 }
@@ -34,6 +35,14 @@ height for single column). Ignored if both \code{width} and \code{height} are sp
 \item{units}{Units for width and height (default: \code{"mm"}).}
 
 \item{bg}{Background colour (default: \code{"transparent"}).}
+
+\item{publication_text}{Logical. If \code{TRUE} (default), applies a text-element
+override at save time bringing all text to Nature-compliant sizes (6-7pt)
+and shrinking the legend keys / margins. The override is added via
+\code{+ theme(...)} so it preserves non-text customisations (e.g.
+\code{legend.position}, panel grid settings). Inline notebook display is
+unaffected. Set to \code{FALSE} to skip the override and save the plot exactly
+as constructed.}
 
 \item{...}{Additional arguments passed to \code{\link[ggplot2:ggsave]{ggplot2::ggsave()}}, such as
 \code{device}, \code{dpi}, \code{scale}, etc.}

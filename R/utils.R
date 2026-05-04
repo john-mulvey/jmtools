@@ -208,6 +208,13 @@ if (file.exists(path_hpc)) {
 #' @param height Plot height. If `NULL`, calculated from `width` and `aspect_ratio`.
 #' @param units Units for width and height (default: `"mm"`).
 #' @param bg Background colour (default: `"transparent"`).
+#' @param publication_text Logical. If `TRUE` (default), applies a text-element
+#'   override at save time bringing all text to Nature-compliant sizes (6-7pt)
+#'   and shrinking the legend keys / margins. The override is added via
+#'   `+ theme(...)` so it preserves non-text customisations (e.g.
+#'   `legend.position`, panel grid settings). Inline notebook display is
+#'   unaffected. Set to `FALSE` to skip the override and save the plot exactly
+#'   as constructed.
 #' @param ... Additional arguments passed to [ggplot2::ggsave()], such as
 #'   `device`, `dpi`, `scale`, etc.
 #'
@@ -260,6 +267,7 @@ ggsave_for_publication <- function(filename,
                                    height = NULL,
                                    units = "mm",
                                    bg = "transparent",
+                                   publication_text = TRUE,
                                    ...) {
 
 
@@ -281,6 +289,24 @@ ggsave_for_publication <- function(filename,
     width <- height * aspect_ratio
   }
   # If both width and height are specified, use them directly
+
+  if (publication_text) {
+    plot <- plot + ggplot2::theme(
+      text              = ggplot2::element_text(size = 6),
+      axis.text         = ggplot2::element_text(size = 6),
+      axis.title        = ggplot2::element_text(size = 7),
+      plot.title        = ggplot2::element_text(size = 7, face = "bold"),
+      plot.subtitle     = ggplot2::element_text(size = 6),
+      plot.caption      = ggplot2::element_text(size = 5),
+      legend.text       = ggplot2::element_text(size = 6),
+      legend.title      = ggplot2::element_text(size = 7),
+      legend.key.size   = ggplot2::unit(0.35, "cm"),
+      legend.spacing    = ggplot2::unit(0.2, "cm"),
+      legend.box.spacing = ggplot2::unit(0.2, "cm"),
+      legend.margin     = ggplot2::margin(0, 0, 0, 0),
+      strip.text        = ggplot2::element_text(size = 6, face = "bold")
+    )
+  }
 
   ggplot2::ggsave(
     filename = filename,
