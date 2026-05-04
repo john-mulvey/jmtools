@@ -359,6 +359,8 @@ test_pc_metadata_associations <- function(pca_result,
 #'   (e.g., `c(0, 0.5)`) to enhance contrast when most observed values are
 #'   small.
 #' @param title Optional plot title. If `NULL`, no title is added.
+#' @param text_size Numeric. Size of the in-cell value labels passed to
+#'   [ggplot2::geom_text()]. Default: `3`.
 #'
 #' @return A ggplot2 object. Returns `NULL` with a warning if no associations
 #'   meet the criteria for plotting.
@@ -421,7 +423,8 @@ plot_pc_metadata_associations <- function(association_results,
                                           show_all = TRUE,
                                           order_by_pc = 1,
                                           fill_limits = c(0, 1),
-                                          title = NULL) {
+                                          title = NULL,
+                                          text_size = 3) {
 
   if (nrow(association_results) == 0) {
     warning("No association results to plot")
@@ -524,7 +527,7 @@ plot_pc_metadata_associations <- function(association_results,
         data = nonsig_data,
         ggplot2::aes(label = sprintf("%.2f", .data$statistic),
                      colour = .data$text_colour),
-        size = 3
+        size = text_size
       )
   }
 
@@ -534,7 +537,7 @@ plot_pc_metadata_associations <- function(association_results,
         data = sig_data,
         ggplot2::aes(label = sprintf("%.2f", .data$statistic),
                      colour = .data$text_colour),
-        size = 3, fontface = "bold"
+        size = text_size, fontface = "bold"
       )
   }
 

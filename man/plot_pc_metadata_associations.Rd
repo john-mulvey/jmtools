@@ -11,7 +11,8 @@ plot_pc_metadata_associations(
   show_all = TRUE,
   order_by_pc = 1,
   fill_limits = c(0, 1),
-  title = NULL
+  title = NULL,
+  text_size = 3
 )
 }
 \arguments{
@@ -44,6 +45,9 @@ outside this range are squished to the nearest limit. Narrow this range
 small.}
 
 \item{title}{Optional plot title. If \code{NULL}, no title is added.}
+
+\item{text_size}{Numeric. Size of the in-cell value labels passed to
+\code{\link[ggplot2:geom_text]{ggplot2::geom_text()}}. Default: \code{3}.}
 }
 \value{
 A ggplot2 object. Returns \code{NULL} with a warning if no associations
