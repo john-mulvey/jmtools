@@ -920,6 +920,13 @@ head({output_name})
 #' observed in every sample (i.e. have no missing values), so only informative
 #' rows are shown.
 #'
+#' The per-protein missingness-vs-abundance plot shows each protein's detection
+#' rate against its mean observed log2 abundance, with a `quasibinomial` GLM
+#' trend. A negative trend indicates left-censored / MNAR missingness and a flat
+#' trend indicates MCAR, which informs the choice of imputation method. Run this
+#' on the pre-imputation matrix (before any per-protein completeness filter,
+#' normalisation or imputation).
+#'
 #' The sample correlation heatmap uses `ggcorrplot` with Pearson correlation
 #' computed on pairwise complete observations.
 #'
@@ -1023,6 +1030,29 @@ pheatmap(
   legend_breaks  = c(0, 1),
   legend_labels  = c("Observed", "Missing")
 )
+
+# Per-protein missingness vs abundance (pre-imputation diagnostic)
+# A negative trend (low-abundance proteins missing more often) is the signature
+# of left-censored / MNAR missingness; a flat trend indicates MCAR. The shape
+# informs which imputation approach is appropriate, so run this on the
+# pre-imputation abundance matrix.
+abundance_summary <- data.frame(
+  mean_log2  = rowMeans({data_name}, na.rm = TRUE),
+  prop_valid = rowMeans(!is.na({data_name}))
+)
+abundance_summary <- abundance_summary[!is.nan(abundance_summary$mean_log2), ]
+
+ggplot(abundance_summary, aes(x = mean_log2, y = prop_valid)) +
+  geom_point(alpha = 0.25, size = 0.7, colour = "#2166AC") +
+  geom_smooth(method = "glm",
+              method.args = list(family = quasibinomial()),
+              se = FALSE,
+              colour = "#B2182B", linewidth = 0.7) +
+  labs(
+    x = "Mean log2 abundance (across observed samples)",
+    y = "Proportion of samples with valid value"
+  ) +
+  theme_jm()
 
 # Data completeness curve: proteins retained vs minimum % samples with data
 n_samples <- ncol({data_name})

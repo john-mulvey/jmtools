@@ -60,6 +60,13 @@ The missing value heatmap uses \code{pheatmap} and excludes proteins that are
 observed in every sample (i.e. have no missing values), so only informative
 rows are shown.
 
+The per-protein missingness-vs-abundance plot shows each protein's detection
+rate against its mean observed log2 abundance, with a \code{quasibinomial} GLM
+trend. A negative trend indicates left-censored / MNAR missingness and a flat
+trend indicates MCAR, which informs the choice of imputation method. Run this
+on the pre-imputation matrix (before any per-protein completeness filter,
+normalisation or imputation).
+
 The sample correlation heatmap uses \code{ggcorrplot} with Pearson correlation
 computed on pairwise complete observations.
 }
