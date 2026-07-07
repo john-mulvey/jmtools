@@ -1054,25 +1054,13 @@ ggplot(abundance_summary, aes(x = mean_log2, y = prop_valid)) +
   ) +
   theme_jm()
 
-# Data completeness curve: proteins retained vs minimum % samples with data
-n_samples <- ncol({data_name})
-completeness_df <- data.frame(
-  min_samples = 0:n_samples,
-  n_proteins  = sapply(0:n_samples, function(m) {{
-    sum(rowSums(!is.na({data_name})) >= m)
-  }})
+# Joint complete-cases curve: proteins jointly observed across the same subset
+# of samples, as the number of retained samples varies (greedy + 2-opt).
+# This is the achievable no-imputation sub-matrix at each operating point.
+jmtools::plot_greedy_complete_cases_distribution(
+  {data_name},
+  show_per_protein_curve = FALSE
 )
-completeness_df$pct_samples <- completeness_df$min_samples / n_samples * 100
-
-ggplot(completeness_df, aes(x = pct_samples, y = n_proteins)) +
-  geom_line(colour = "#2166AC", linewidth = 0.9) +
-  geom_point(size = 2, colour = "#2166AC") +
-  scale_x_continuous(breaks = seq(0, 100, 25)) +
-  labs(
-    x = "Minimum completeness (% of samples with valid quantification)",
-    y = "Number of proteins"
-  ) +
-  theme_jm()
 
 # Sample correlation heatmap (Pearson, pairwise complete observations)
 cor_mat <- cor({data_name}, use = "pairwise.complete.obs", method = "pearson")
