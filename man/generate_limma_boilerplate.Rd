@@ -15,7 +15,8 @@ generate_limma_boilerplate(
   fc_threshold = 1,
   adj_p_threshold = 0.05,
   include_anova = FALSE,
-  include_effect_size = TRUE
+  include_effect_size = TRUE,
+  min_n_per_group = 3
 )
 }
 \arguments{
@@ -66,6 +67,13 @@ for pairwise contrasts. Uses the moderated posterior SD from limma's
 empirical Bayes framework as a stabilised denominator and applies
 Hedges' J correction (using the moderated total degrees of freedom)
 to remove the upward bias of Cohen's d at small n. Default: \code{TRUE}.}
+
+\item{min_n_per_group}{Minimum number of non-NA observations required in
+every group for a feature to be tested. Features that are too sparse in
+any group are removed before model fitting, since their moderated
+statistics are unreliable and they inflate the multiple-testing burden.
+The threshold is emitted as an editable \code{min_n_per_group} variable in the
+generated code. Default: 3.}
 }
 \value{
 Returns \code{invisible(NULL)}. The function prints code to the console
@@ -83,6 +91,8 @@ The generated code follows a standard limma workflow:
 \enumerate{
 \item Define significance thresholds (\code{fc_threshold}, \code{adj_p_threshold})
 \item Create design matrix from the specified formula
+\item Remove features with fewer than \code{min_n_per_group} non-NA
+observations in any group (reported via \code{message()})
 \item Fit linear model with \code{limma::lmFit()}
 \item Define and fit contrasts with \code{limma::makeContrasts()} and
 \code{limma::contrasts.fit()}

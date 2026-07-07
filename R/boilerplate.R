@@ -202,6 +202,12 @@ ggpairs(
 #'   empirical Bayes framework as a stabilised denominator and applies
 #'   Hedges' J correction (using the moderated total degrees of freedom)
 #'   to remove the upward bias of Cohen's d at small n. Default: `TRUE`.
+#' @param min_n_per_group Minimum number of non-NA observations required in
+#'   every group for a feature to be tested. Features that are too sparse in
+#'   any group are removed before model fitting, since their moderated
+#'   statistics are unreliable and they inflate the multiple-testing burden.
+#'   The threshold is emitted as an editable `min_n_per_group` variable in the
+#'   generated code. Default: 3.
 #'
 #' @return Returns `invisible(NULL)`. The function prints code to the console
 #'   which can be copied into an analysis script.
@@ -212,6 +218,8 @@ ggpairs(
 #' \enumerate{
 #'   \item Define significance thresholds (`fc_threshold`, `adj_p_threshold`)
 #'   \item Create design matrix from the specified formula
+#'   \item Remove features with fewer than `min_n_per_group` non-NA
+#'     observations in any group (reported via `message()`)
 #'   \item Fit linear model with `limma::lmFit()`
 #'   \item Define and fit contrasts with `limma::makeContrasts()` and
 #'     `limma::contrasts.fit()`
@@ -263,7 +271,8 @@ generate_limma_boilerplate <- function(data_name,
                                        fc_threshold = 1,
                                        adj_p_threshold = 0.05,
                                        include_anova = FALSE,
-                                       include_effect_size = TRUE) {
+                                       include_effect_size = TRUE,
+                                       min_n_per_group = 3) {
 
   # Validate: need at least one of contrast or anova
   if (is.null(contrast) && !include_anova) {
@@ -347,6 +356,25 @@ adj_p_threshold <- {adj_p_threshold}
 design <- model.matrix({formula}, data = {metadata_name})
 {colnames_code}
 head(design)
+
+# Require at least min_n_per_group non-NA observations in every group.
+# Features too sparse in any group give unreliable moderated statistics and
+# inflate the multiple-testing burden, so they are dropped before fitting
+# (this also gives eBayes a cleaner variance prior). Lower or set to 1 to
+# disable.
+min_n_per_group <- {min_n_per_group}
+group_non_na <- sapply(levels({metadata_name}${group_var}), function(g) {{
+  samples_in_group <- {metadata_name}${id_col}[{metadata_name}${group_var} == g]
+  rowSums(!is.na({data_name}[, samples_in_group, drop = FALSE]))
+}})
+features_ok <- apply(group_non_na, 1, min) >= min_n_per_group
+if (any(!features_ok)) {{
+  message("Removed ", sum(!features_ok), " of ", length(features_ok),
+          " features with < ", min_n_per_group,
+          " non-NA samples in at least one group; ",
+          sum(features_ok), " retained for testing.")
+}}
+{data_name} <- {data_name}[features_ok, , drop = FALSE]
 
 # Fit linear model
 fit <- lmFit({data_name}, design)
