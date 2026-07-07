@@ -15,7 +15,8 @@ plot_gsea_dots(
   x_label = "Normalised Enrichment Score (NES)",
   title = "GSEA Results",
   colours = c(Enriched = "firebrick", Depleted = "steelblue"),
-  wrap_labels = 30
+  wrap_labels = 30,
+  prettify_labels = TRUE
 )
 }
 \arguments{
@@ -49,6 +50,10 @@ Default: \code{c(Enriched = "firebrick", Depleted = "steelblue")}.}
 
 \item{wrap_labels}{Number of characters at which to wrap long gene set names.
 Set to \code{NULL} to disable wrapping. Default: 30.}
+
+\item{prettify_labels}{Logical. If \code{TRUE} (default), gene set names are
+passed through \code{\link[=format_gene_set_label]{format_gene_set_label()}} before wrapping, converting
+MSigDB-style names to readable form. Set to \code{FALSE} to display raw labels.}
 }
 \value{
 A ggplot2 object.

@@ -12,6 +12,7 @@ plot_clustered_enrichment_bars(
   x_label = "Enrichment Score",
   colours = c(Enriched = "firebrick", Depleted = "steelblue"),
   wrap_labels = 30,
+  prettify_labels = TRUE,
   show_n = TRUE,
   point_size = 2,
   point_alpha = 0.6
@@ -36,6 +37,10 @@ Default: \code{c(Enriched = "firebrick", Depleted = "steelblue")}.}
 
 \item{wrap_labels}{Number of characters at which to wrap long cluster labels.
 Set to \code{NULL} to disable wrapping. Default: 30.}
+
+\item{prettify_labels}{Logical. If \code{TRUE} (default), cluster labels are
+passed through \code{\link[=format_gene_set_label]{format_gene_set_label()}} before wrapping, converting
+MSigDB-style names to readable form. Set to \code{FALSE} to display raw labels.}
 
 \item{show_n}{Logical. If \code{TRUE}, appends the number of gene sets in each
 cluster to the label. Default: \code{TRUE}.}

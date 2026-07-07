@@ -17,6 +17,7 @@ plot_gsea_network(
   min_cluster_size = 3,
   exclude_singletons = FALSE,
   show_labels = TRUE,
+  prettify_labels = TRUE,
   label_clusters_by = c("pagerank", "n_genes"),
   layout = "fr",
   title = NULL,
@@ -65,6 +66,12 @@ are excluded from the plot. Default: \code{FALSE}.}
 
 \item{show_labels}{Logical. If \code{TRUE}, shows cluster labels on the plot.
 Default: \code{TRUE}.}
+
+\item{prettify_labels}{Logical. If \code{TRUE} (default), the cluster labels
+drawn on the plot are passed through \code{\link[=format_gene_set_label]{format_gene_set_label()}}, converting
+MSigDB-style names to readable form. Set to \code{FALSE} to display raw labels.
+Only the plotted labels are affected; the \code{"clusters"} attribute attached
+to the returned plot retains the raw gene-set names.}
 
 \item{label_clusters_by}{Method for selecting the representative label for
 each cluster. One of "pagerank" (highest PageRank centrality) or

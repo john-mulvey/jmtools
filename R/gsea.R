@@ -244,6 +244,48 @@ cluster_enrichment_results <- function(enrichment_results,
 }
 
 
+#' Prettify an MSigDB-style gene-set name for display
+#'
+#' Converts MSigDB-style upper-snake-case gene-set names (e.g.
+#' `"GOBP_OXIDATIVE_PHOSPHORYLATION"`) into a human-readable label
+#' (`"GO:BP Oxidative phosphorylation"`) suitable for figure axes and
+#' captions. GO Biological Process, Cellular Component and Molecular Function
+#' prefixes (`GOBP_`, `GOCC_`, `GOMF_`) are rewritten as `GO:BP`, `GO:CC` and
+#' `GO:MF`; any other name simply has its underscores replaced with spaces and
+#' is set to sentence case (so `"HALLMARK_APOPTOSIS"` becomes
+#' `"Hallmark apoptosis"`). The result reads well and lets `strwrap()` break
+#' long labels at word boundaries.
+#'
+#' @param x Character vector of gene-set names. `NA` values are returned
+#'   unchanged.
+#'
+#' @return A character vector of prettified labels, the same length as `x`.
+#'
+#' @export
+#'
+#' @examples
+#' format_gene_set_label("GOBP_OXIDATIVE_PHOSPHORYLATION")
+#' format_gene_set_label(c("GOCC_MITOCHONDRION", "HALLMARK_APOPTOSIS"))
+#'
+#' @seealso [plot_gsea_bars()], [plot_gsea_dots()],
+#'   [plot_clustered_enrichment_bars()], [plot_gsea_network()], which apply
+#'   this by default via their `prettify_labels` argument.
+#'
+#' @importFrom stringr str_detect str_remove str_replace_all str_to_sentence
+format_gene_set_label <- function(x) {
+  prefix <- ifelse(stringr::str_detect(x, "^GOBP_"), "GO:BP ",
+            ifelse(stringr::str_detect(x, "^GOCC_"), "GO:CC ",
+            ifelse(stringr::str_detect(x, "^GOMF_"), "GO:MF ", "")))
+  body <- x |>
+    stringr::str_remove("^GO(BP|CC|MF)_") |>
+    stringr::str_replace_all("_", " ") |>
+    stringr::str_to_sentence()
+  result <- paste0(prefix, body)
+  result[is.na(x)] <- NA_character_
+  result
+}
+
+
 #' Plot clustered enrichment results as a bar plot
 #'
 #' Creates a bar plot of clustered enrichment results (GSEA or ORA) showing
@@ -261,6 +303,9 @@ cluster_enrichment_results <- function(enrichment_results,
 #'   Default: `c(Enriched = "firebrick", Depleted = "steelblue")`.
 #' @param wrap_labels Number of characters at which to wrap long cluster labels.
 #'   Set to `NULL` to disable wrapping. Default: 30.
+#' @param prettify_labels Logical. If `TRUE` (default), cluster labels are
+#'   passed through [format_gene_set_label()] before wrapping, converting
+#'   MSigDB-style names to readable form. Set to `FALSE` to display raw labels.
 #' @param show_n Logical. If `TRUE`, appends the number of gene sets in each
 #'   cluster to the label. Default: `TRUE`.
 #' @param point_size Size of the individual gene set points. Default: 2.
@@ -318,6 +363,7 @@ plot_clustered_enrichment_bars <- function(clustered_results,
                             x_label = "Enrichment Score",
                             colours = c(Enriched = "firebrick", Depleted = "steelblue"),
                             wrap_labels = 30,
+                            prettify_labels = TRUE,
                             show_n = TRUE,
                             point_size = 2,
                             point_alpha = 0.6) {
@@ -398,6 +444,11 @@ plot_clustered_enrichment_bars <- function(clustered_results,
     "Depleted"
   )
   points_data$direction <- factor(points_data$direction, levels = c("Depleted", "Enriched"))
+
+  # Prettify MSigDB-style gene-set names for display
+  if (prettify_labels) {
+    summary_data$cluster_label <- format_gene_set_label(summary_data$cluster_label)
+  }
 
   # Add n to labels if requested
   if (show_n) {
@@ -488,6 +539,9 @@ plot_clustered_enrichment_bars <- function(clustered_results,
 #'   Default: `c(Enriched = "firebrick", Depleted = "steelblue")`.
 #' @param wrap_labels Number of characters at which to wrap long gene set names.
 #'   Set to `NULL` to disable wrapping. Default: 30.
+#' @param prettify_labels Logical. If `TRUE` (default), gene set names are
+#'   passed through [format_gene_set_label()] before wrapping, converting
+#'   MSigDB-style names to readable form. Set to `FALSE` to display raw labels.
 #'
 #' @return A ggplot2 object.
 #'
@@ -541,7 +595,8 @@ plot_gsea_dots <- function(gsea_results,
                                x_label         = "Normalised Enrichment Score (NES)",
                                title           = "GSEA Results",
                                colours         = c(Enriched = "firebrick", Depleted = "steelblue"),
-                               wrap_labels     = 30) {
+                               wrap_labels     = 30,
+                               prettify_labels = TRUE) {
 
   missing_cols <- setdiff(c(gene_set_col, score_col, pval_col, adj_pval_col),
                           names(gsea_results))
@@ -578,6 +633,11 @@ plot_gsea_dots <- function(gsea_results,
   if (nrow(plot_data) == 0) {
     warning("No gene sets to plot after filtering")
     return(NULL)
+  }
+
+  # Prettify MSigDB-style gene-set names for display
+  if (prettify_labels) {
+    plot_data[[gene_set_col]] <- format_gene_set_label(plot_data[[gene_set_col]])
   }
 
   # Wrap long labels if requested
@@ -638,6 +698,9 @@ plot_gsea_dots <- function(gsea_results,
 #' @param title Plot title. Default: `"Enrichment Results"`.
 #' @param wrap_labels Number of characters at which to wrap long labels. `NULL`
 #'   (default) disables wrapping.
+#' @param prettify_labels Logical. If `TRUE` (default), gene set labels are
+#'   passed through [format_gene_set_label()] before wrapping, converting
+#'   MSigDB-style names to readable form. Set to `FALSE` to display raw labels.
 #'
 #' @return A ggplot2 object.
 #'
@@ -664,7 +727,8 @@ plot_gsea_bars <- function(enrichment_results,
                            adj_p_threshold = NULL,
                            x_label         = "Enrichment Score",
                            title           = "Enrichment Results",
-                           wrap_labels     = NULL) {
+                           wrap_labels     = NULL,
+                           prettify_labels = TRUE) {
 
   missing_cols <- setdiff(c(gene_set_col, score_col, adj_pval_col),
                           names(enrichment_results))
@@ -698,6 +762,10 @@ plot_gsea_bars <- function(enrichment_results,
     ifelse(plot_data[[adj_pval_col]] < 0.01, "**",
            ifelse(plot_data[[adj_pval_col]] < 0.05, "*", ""))
   )
+
+  if (prettify_labels) {
+    plot_data[[gene_set_col]] <- format_gene_set_label(plot_data[[gene_set_col]])
+  }
 
   if (!is.null(wrap_labels)) {
     plot_data[[gene_set_col]] <- sapply(
@@ -771,6 +839,11 @@ plot_gsea_bars <- function(enrichment_results,
 #'   are excluded from the plot. Default: `FALSE`.
 #' @param show_labels Logical. If `TRUE`, shows cluster labels on the plot.
 #'   Default: `TRUE`.
+#' @param prettify_labels Logical. If `TRUE` (default), the cluster labels
+#'   drawn on the plot are passed through [format_gene_set_label()], converting
+#'   MSigDB-style names to readable form. Set to `FALSE` to display raw labels.
+#'   Only the plotted labels are affected; the `"clusters"` attribute attached
+#'   to the returned plot retains the raw gene-set names.
 #' @param label_clusters_by Method for selecting the representative label for
 #'   each cluster. One of "pagerank" (highest PageRank centrality) or
 #'   "n_genes" (largest gene set). Default: "pagerank".
@@ -868,6 +941,7 @@ plot_gsea_network <- function(gsea_results,
                                min_cluster_size = 3,
                                exclude_singletons = FALSE,
                                show_labels = TRUE,
+                               prettify_labels = TRUE,
                                label_clusters_by = c("pagerank", "n_genes"),
                                layout = "fr",
                                title = NULL,
@@ -992,6 +1066,12 @@ plot_gsea_network <- function(gsea_results,
     node_data$is_label_node <- FALSE
     node_data$display_label <- NA_character_
     large_clusters <- character(0)
+  }
+
+  # Prettify MSigDB-style names on the plotted labels (NA-safe; the raw names
+  # are retained in the "clusters" attribute attached below)
+  if (prettify_labels) {
+    node_data$display_label <- format_gene_set_label(node_data$display_label)
   }
 
   # Filter node data for hulls (only large clusters) and drop unused factor levels

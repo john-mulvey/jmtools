@@ -13,7 +13,8 @@ plot_gsea_bars(
   adj_p_threshold = NULL,
   x_label = "Enrichment Score",
   title = "Enrichment Results",
-  wrap_labels = NULL
+  wrap_labels = NULL,
+  prettify_labels = TRUE
 )
 }
 \arguments{
@@ -41,6 +42,10 @@ and depleted. \code{NULL} (default) shows all rows.}
 
 \item{wrap_labels}{Number of characters at which to wrap long labels. \code{NULL}
 (default) disables wrapping.}
+
+\item{prettify_labels}{Logical. If \code{TRUE} (default), gene set labels are
+passed through \code{\link[=format_gene_set_label]{format_gene_set_label()}} before wrapping, converting
+MSigDB-style names to readable form. Set to \code{FALSE} to display raw labels.}
 }
 \value{
 A ggplot2 object.
