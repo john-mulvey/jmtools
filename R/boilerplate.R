@@ -645,10 +645,11 @@ ggplot({results_name}, aes(x = {pval_col})) +
 #'   values: "Homo sapiens", "Mus musculus". Default: "Homo sapiens".
 #' @param category Character string specifying the msigdbr category. Common
 #'   values: "H" (hallmark), "C2" (curated), "C5" (ontology), "C7" (immunologic).
-#'   Default: "H".
-#' @param subcategory Character string specifying the msigdbr subcategory, or
-#'   `NULL` for all subcategories. Examples: "CP:KEGG", "CP:REACTOME",
-#'   "GO:BP", "GO:MF", "GO:CC". Default: `NULL`.
+#'   Default: "C5".
+#' @param subcategory Character vector specifying the msigdbr subcategories to
+#'   test against (their union), or `NULL` for all subcategories in `category`.
+#'   Examples: "CP:KEGG", "CP:REACTOME", "GO:BP", "GO:MF", "GO:CC".
+#'   Default: `c("GO:BP", "GO:CC")`.
 #' @param min_size Minimum gene set size for fgsea filtering. Default: 15.
 #' @param max_size Maximum gene set size for fgsea filtering. Default: 500.
 #'
@@ -686,10 +687,18 @@ ggplot({results_name}, aes(x = {pval_col})) +
 #' @export
 #'
 #' @examples
-#' # Generate boilerplate for hallmark gene sets (human)
+#' # Generate boilerplate for GO:BP + GO:CC gene sets (human, default)
 #' generate_gsea_boilerplate(
 #'   results_name = "limma_results_treatment_vs_control",
-#'   output_name = "gsea_hallmark"
+#'   output_name = "gsea_go"
+#' )
+#'
+#' # Use hallmark gene sets
+#' generate_gsea_boilerplate(
+#'   results_name = "de_results",
+#'   output_name = "gsea_hallmark",
+#'   category = "H",
+#'   subcategory = NULL
 #' )
 #'
 #' # Use Reactome pathways
@@ -704,19 +713,20 @@ generate_gsea_boilerplate <- function(results_name,
                                        feature_col = "gene_symbol",
                                        stat_col = "t",
                                        species = "Homo sapiens",
-                                       category = "H",
-                                       subcategory = NULL,
+                                       category = "C5",
+                                       subcategory = c("GO:BP", "GO:CC"),
                                        min_size = 15,
                                        max_size = 500) {
 
-  # Build subcategory filter code
+  # Build gene set retrieval code. A single msigdbr category can span several
+  # subcategories, so fetch the whole category then filter to the requested
+  # subcategories (their union). NULL keeps every subcategory in the category.
   if (is.null(subcategory)) {
-    subcategory_code <- ""
-    subcategory_desc <- paste0("all subcategories in ", category)
+    gene_sets_code <- glue::glue('gene_sets_df <- msigdbr(species = "{species}", category = "{category}")')
   } else {
-    subcategory_code <- glue::glue(',
-  subcategory = "{subcategory}"')
-    subcategory_desc <- subcategory
+    subcategory_vec <- paste0('"', subcategory, '"', collapse = ", ")
+    gene_sets_code <- glue::glue('gene_sets_df <- msigdbr(species = "{species}", category = "{category}") |>
+  dplyr::filter(gs_subcat %in% c({subcategory_vec}))')
   }
 
   code <- glue::glue('
@@ -725,7 +735,7 @@ library(fgsea)
 library(dplyr)
 
 # Get gene sets from msigdbr
-gene_sets_df <- msigdbr(species = "{species}", category = "{category}"{subcategory_code})
+{gene_sets_code}
 gene_sets <- split(gene_sets_df$gene_symbol, gene_sets_df$gs_name)
 
 message("Loaded ", length(gene_sets), " gene sets")
@@ -785,10 +795,11 @@ head({output_name})
 #'   values: "Homo sapiens", "Mus musculus". Default: "Homo sapiens".
 #' @param category Character string specifying the msigdbr category. Common
 #'   values: "H" (hallmark), "C2" (curated), "C5" (ontology), "C7" (immunologic).
-#'   Default: "H".
-#' @param subcategory Character string specifying the msigdbr subcategory, or
-#'   `NULL` for all subcategories. Examples: "CP:KEGG", "CP:REACTOME",
-#'   "GO:BP", "GO:MF", "GO:CC". Default: `NULL`.
+#'   Default: "C5".
+#' @param subcategory Character vector specifying the msigdbr subcategories to
+#'   test against (their union), or `NULL` for all subcategories in `category`.
+#'   Examples: "CP:KEGG", "CP:REACTOME", "GO:BP", "GO:MF", "GO:CC".
+#'   Default: `c("GO:BP", "GO:CC")`.
 #' @param min_size Minimum gene set size for filtering. Default: 15.
 #' @param max_size Maximum gene set size for filtering. Default: 500.
 #'
@@ -826,11 +837,20 @@ head({output_name})
 #' @export
 #'
 #' @examples
-#' # Generate boilerplate for hallmark gene sets (human)
+#' # Generate boilerplate for GO:BP + GO:CC gene sets (human, default)
 #' generate_ora_boilerplate(
 #'   gene_list_name = "upregulated_genes",
 #'   background_name = "all_detected_genes",
-#'   output_name = "ora_hallmark"
+#'   output_name = "ora_go"
+#' )
+#'
+#' # Use hallmark gene sets
+#' generate_ora_boilerplate(
+#'   gene_list_name = "sig_genes",
+#'   background_name = "background_genes",
+#'   output_name = "ora_hallmark",
+#'   category = "H",
+#'   subcategory = NULL
 #' )
 #'
 #' # Use Reactome pathways
@@ -845,19 +865,20 @@ generate_ora_boilerplate <- function(gene_list_name,
                                       background_name,
                                       output_name,
                                       species = "Homo sapiens",
-                                      category = "H",
-                                      subcategory = NULL,
+                                      category = "C5",
+                                      subcategory = c("GO:BP", "GO:CC"),
                                       min_size = 15,
                                       max_size = 500) {
 
-  # Build subcategory filter code
+  # Build gene set retrieval code. A single msigdbr category can span several
+  # subcategories, so fetch the whole category then filter to the requested
+  # subcategories (their union). NULL keeps every subcategory in the category.
   if (is.null(subcategory)) {
-    subcategory_code <- ""
-    subcategory_desc <- paste0("all subcategories in ", category)
+    gene_sets_code <- glue::glue('gene_sets_df <- msigdbr(species = "{species}", category = "{category}")')
   } else {
-    subcategory_code <- glue::glue(',
-  subcategory = "{subcategory}"')
-    subcategory_desc <- subcategory
+    subcategory_vec <- paste0('"', subcategory, '"', collapse = ", ")
+    gene_sets_code <- glue::glue('gene_sets_df <- msigdbr(species = "{species}", category = "{category}") |>
+  dplyr::filter(gs_subcat %in% c({subcategory_vec}))')
   }
 
   code <- glue::glue('
@@ -866,7 +887,7 @@ library(fgsea)
 library(dplyr)
 
 # Get gene sets from msigdbr
-gene_sets_df <- msigdbr(species = "{species}", category = "{category}"{subcategory_code})
+{gene_sets_code}
 gene_sets <- split(gene_sets_df$gene_symbol, gene_sets_df$gs_name)
 
 message("Loaded ", length(gene_sets), " gene sets")

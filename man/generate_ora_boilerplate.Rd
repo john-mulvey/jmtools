@@ -9,8 +9,8 @@ generate_ora_boilerplate(
   background_name,
   output_name,
   species = "Homo sapiens",
-  category = "H",
-  subcategory = NULL,
+  category = "C5",
+  subcategory = c("GO:BP", "GO:CC"),
   min_size = 15,
   max_size = 500
 )
@@ -30,11 +30,12 @@ values: "Homo sapiens", "Mus musculus". Default: "Homo sapiens".}
 
 \item{category}{Character string specifying the msigdbr category. Common
 values: "H" (hallmark), "C2" (curated), "C5" (ontology), "C7" (immunologic).
-Default: "H".}
+Default: "C5".}
 
-\item{subcategory}{Character string specifying the msigdbr subcategory, or
-\code{NULL} for all subcategories. Examples: "CP:KEGG", "CP:REACTOME",
-"GO:BP", "GO:MF", "GO:CC". Default: \code{NULL}.}
+\item{subcategory}{Character vector specifying the msigdbr subcategories to
+test against (their union), or \code{NULL} for all subcategories in \code{category}.
+Examples: "CP:KEGG", "CP:REACTOME", "GO:BP", "GO:MF", "GO:CC".
+Default: \code{c("GO:BP", "GO:CC")}.}
 
 \item{min_size}{Minimum gene set size for filtering. Default: 15.}
 
@@ -80,11 +81,20 @@ Cellular Component)}
 }
 
 \examples{
-# Generate boilerplate for hallmark gene sets (human)
+# Generate boilerplate for GO:BP + GO:CC gene sets (human, default)
 generate_ora_boilerplate(
   gene_list_name = "upregulated_genes",
   background_name = "all_detected_genes",
-  output_name = "ora_hallmark"
+  output_name = "ora_go"
+)
+
+# Use hallmark gene sets
+generate_ora_boilerplate(
+  gene_list_name = "sig_genes",
+  background_name = "background_genes",
+  output_name = "ora_hallmark",
+  category = "H",
+  subcategory = NULL
 )
 
 # Use Reactome pathways
