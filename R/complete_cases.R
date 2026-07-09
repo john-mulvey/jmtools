@@ -161,8 +161,8 @@ greedy_complete_cases_trace <- function(abundance) {
 #' plot_greedy_complete_cases_distribution(abundance)
 #' }
 #'
-#' @importFrom ggplot2 ggplot aes geom_line scale_x_continuous
-#'   scale_colour_manual labs
+#' @importFrom ggplot2 ggplot aes geom_line scale_x_continuous scale_y_continuous
+#' @importFrom ggplot2 expansion scale_colour_manual labs
 plot_greedy_complete_cases_distribution <- function(abundance,
                                                     show_per_protein_curve = TRUE) {
   n_samples <- ncol(abundance)
@@ -202,6 +202,10 @@ plot_greedy_complete_cases_distribution <- function(abundance,
   ) +
     ggplot2::geom_line(linewidth = 0.9) +
     ggplot2::scale_x_continuous(breaks = seq(0, 100, 25)) +
+    ggplot2::scale_y_continuous(
+      limits = c(0, NA),
+      expand = ggplot2::expansion(mult = c(0, 0.05))
+    ) +
     ggplot2::scale_colour_manual(values = colour_values) +
     ggplot2::labs(
       x      = "% of samples",
