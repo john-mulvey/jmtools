@@ -32,7 +32,9 @@
 #' @return A data frame with columns:
 #' \describe{
 #'   \item{variable}{Name of the metadata variable}
-#'   \item{principal_component}{Name of the principal component (e.g., "PC1")}
+#'   \item{principal_component}{Principal component, as a factor whose levels
+#'     follow component order rather than the alphabetical order of the labels
+#'     (so PC2 precedes PC10). Untested components are absent from the levels.}
 #'   \item{test_type}{Method used: `"Univariate"` or `"Multivariate Shapley"`}
 #'   \item{statistic}{Effect size in \[0, 1\] (see Details)}
 #'   \item{p_value}{Raw p-value (univariate only; `NA` for shapley)}
@@ -322,6 +324,18 @@ test_pc_metadata_associations <- function(pca_result,
   }
 
   results_df <- do.call(rbind, results_list)
+
+  # PC identity is carried as a label taken from colnames(pca_coords), so the
+  # correct ordering is the column order and not any property of the string.
+  # Recording it as factor levels means downstream plots need not parse the
+  # labels, which would otherwise sort PC10 before PC2. intersect() keeps the
+  # column order and drops components that were skipped during testing, so the
+  # levels never contain a component with no rows.
+  results_df$principal_component <- factor(
+    results_df$principal_component,
+    levels = intersect(colnames(pca_coords)[pcs_to_use],
+                       unique(results_df$principal_component))
+  )
 
   # Adjust p-values (NAs propagate cleanly for shapley rows)
   results_df$p_adj <- stats::p.adjust(results_df$p_value, method = p_adjust_method)

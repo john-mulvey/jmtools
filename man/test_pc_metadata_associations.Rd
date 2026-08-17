@@ -49,7 +49,9 @@ See Details.}
 A data frame with columns:
 \describe{
 \item{variable}{Name of the metadata variable}
-\item{principal_component}{Name of the principal component (e.g., "PC1")}
+\item{principal_component}{Principal component, as a factor whose levels
+follow component order rather than the alphabetical order of the labels
+(so PC2 precedes PC10). Untested components are absent from the levels.}
 \item{test_type}{Method used: \code{"Univariate"} or \code{"Multivariate Shapley"}}
 \item{statistic}{Effect size in [0, 1] (see Details)}
 \item{p_value}{Raw p-value (univariate only; \code{NA} for shapley)}
