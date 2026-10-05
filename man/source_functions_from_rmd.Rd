@@ -25,6 +25,10 @@ R's parser, and evaluates only the top-level expressions that are function
 assignments (\code{name <- function(...) {...}} or \code{name = function(...) {...}}).
 Because parsing is done by R's parser rather than by tracking braces in raw
 text, comments and strings containing \verb{\\\{} or \verb{\\\}} are handled correctly.
+Only assignments to a plain name are sourced: functions assigned into an
+object (e.g. \verb{obj$f <- function(...)} or \verb{x[["f"]] <- function(...)}) and
+functions wrapped in another call (e.g. \verb{f <- memoise::memoise(function(...))})
+are skipped, since evaluating them would require running other code.
 }
 \examples{
 \dontrun{

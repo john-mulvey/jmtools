@@ -18,6 +18,10 @@
 #' assignments (`name <- function(...) {...}` or `name = function(...) {...}`).
 #' Because parsing is done by R's parser rather than by tracking braces in raw
 #' text, comments and strings containing `\{` or `\}` are handled correctly.
+#' Only assignments to a plain name are sourced: functions assigned into an
+#' object (e.g. `obj$f <- function(...)` or `x[["f"]] <- function(...)`) and
+#' functions wrapped in another call (e.g. `f <- memoise::memoise(function(...))`)
+#' are skipped, since evaluating them would require running other code.
 #'
 #' @export
 #'
@@ -52,12 +56,13 @@ source_functions_from_rmd <- function(path, envir = parent.frame()) {
   # comments correctly, unlike a regex-based brace counter.
   exprs <- parse(text = code)
 
+  # The head and LHS must be plain symbols: calls like `pkg::fn()` have a call
+  # as their head, and `obj$f <- function()` would fail without `obj` defined.
   is_func_def <- function(e) {
-    if (!is.call(e)) return(FALSE)
-    op <- as.character(e[[1L]])
-    if (!op %in% c("<-", "=", "<<-")) return(FALSE)
-    rhs <- e[[3L]]
-    is.call(rhs) && identical(as.character(rhs[[1L]]), "function")
+    is.call(e) && length(e) == 3L &&
+      is.symbol(e[[1L]]) && as.character(e[[1L]]) %in% c("<-", "=", "<<-") &&
+      (is.symbol(e[[2L]]) || is.character(e[[2L]])) &&
+      is.call(e[[3L]]) && identical(e[[3L]][[1L]], as.name("function"))
   }
 
   func_exprs <- Filter(is_func_def, as.list(exprs))
