@@ -13,13 +13,14 @@
 #' @return Invisibly returns the deparsed function definitions as a character vector
 #'
 #' @details
-#' Extracts all R code chunks (delimited by ```\{r\} and ```), parses them with
-#' R's parser, and evaluates only the top-level expressions that are function
-#' assignments (`name <- function(...) {...}` or `name = function(...) {...}`).
+#' Extracts the code from all R chunks (those whose header starts with `{r`),
+#' skipping chunks for other engines (e.g. `{bash}`) and plain markdown code
+#' blocks, parses it with R's parser, and evaluates only the top-level
+#' expressions that are function assignments (`name <- function(...) {...}` or `name = function(...) {...}`).
 #' Because parsing is done by R's parser rather than by tracking braces in raw
-#' text, comments and strings containing `\{` or `\}` are handled correctly.
+#' text, comments and strings containing `{` or `}` are handled correctly.
 #' Only assignments to a plain name are sourced: functions assigned into an
-#' object (e.g. `obj$f <- function(...)` or `x[["f"]] <- function(...)`) and
+#' object (e.g. `obj$f <- function(...)`) and
 #' functions wrapped in another call (e.g. `f <- memoise::memoise(function(...))`)
 #' are skipped, since evaluating them would require running other code.
 #'
@@ -38,18 +39,25 @@ source_functions_from_rmd <- function(path, envir = parent.frame()) {
 
   lines <- readLines(path, warn = FALSE)
 
-  chunk_starts <- grep("^```\\{r", lines)
-  chunk_ends   <- grep("^```$", lines)
-  if (length(chunk_starts) != length(chunk_ends)) {
-    stop("Mismatched code chunk delimiters in ", path)
+  # Walk the fence lines in order, pairing each opening fence with the next
+  # bare closing fence, so that chunks for other engines (```{bash}) and plain
+  # markdown code blocks (```) are skipped rather than miscounted. Only the
+  # bodies of R chunks are kept.
+  chunks <- list()
+  open_line <- NULL
+  for (i in grep("^\\s*```", lines)) {
+    if (is.null(open_line)) {
+      open_line <- i
+    } else if (grepl("^\\s*```\\s*$", lines[i])) {
+      if (grepl("^\\s*```\\{r[ ,}]", lines[open_line])) {
+        chunks <- c(chunks, list(lines[seq(open_line + 1, length.out = i - open_line - 1)]))
+      }
+      open_line <- NULL
+    }
   }
-
-  # Concatenate all chunk bodies into one parseable text block. Skip empty
-  # chunks (chunk_end == chunk_start + 1) so we don't accidentally pull the
-  # chunk delimiters back as content via a backwards range.
-  chunks <- Map(function(s, e) {
-    if (e <= s + 1) character(0) else lines[(s + 1):(e - 1)]
-  }, chunk_starts, chunk_ends)
+  if (!is.null(open_line)) {
+    stop("Unclosed code chunk starting at line ", open_line, " in ", path)
+  }
   code <- paste(unlist(chunks), collapse = "\n")
 
   # Parse to a list of top-level expressions; R's parser handles strings and

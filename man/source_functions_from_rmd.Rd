@@ -20,13 +20,14 @@ without executing the entire document. This is useful for reusing functions
 defined in analysis notebooks without running all the analysis code.
 }
 \details{
-Extracts all R code chunks (delimited by \verb{\\\{r\\\} and }), parses them with
-R's parser, and evaluates only the top-level expressions that are function
-assignments (\code{name <- function(...) {...}} or \code{name = function(...) {...}}).
+Extracts the code from all R chunks (those whose header starts with \verb{\{r}),
+skipping chunks for other engines (e.g. \code{{bash}}) and plain markdown code
+blocks, parses it with R's parser, and evaluates only the top-level
+expressions that are function assignments (\code{name <- function(...) {...}} or \code{name = function(...) {...}}).
 Because parsing is done by R's parser rather than by tracking braces in raw
-text, comments and strings containing \verb{\\\{} or \verb{\\\}} are handled correctly.
+text, comments and strings containing \verb{\{} or \verb{\}} are handled correctly.
 Only assignments to a plain name are sourced: functions assigned into an
-object (e.g. \verb{obj$f <- function(...)} or \verb{x[["f"]] <- function(...)}) and
+object (e.g. \verb{obj$f <- function(...)}) and
 functions wrapped in another call (e.g. \verb{f <- memoise::memoise(function(...))})
 are skipped, since evaluating them would require running other code.
 }
