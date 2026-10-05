@@ -8,6 +8,8 @@
 #' defined in analysis notebooks without running all the analysis code.
 #'
 #' @param path Path to the .Rmd file
+#' @param functions Optional character vector naming the functions to source.
+#'   If `NULL` (the default), every function definition in the file is sourced.
 #' @param envir Environment in which to evaluate the functions (default: parent.frame())
 #'
 #' @return Invisibly returns the deparsed function definitions as a character vector
@@ -24,6 +26,15 @@
 #' functions wrapped in another call (e.g. `f <- memoise::memoise(function(...))`)
 #' are skipped, since evaluating them would require running other code.
 #'
+#' When `functions` is given, an error is raised, and nothing is sourced, if a
+#' requested name is not defined in the file, is defined more than once, or
+#' belongs to a function that calls another function defined in the file that
+#' was not also requested. Without `functions`, a name defined more than once
+#' takes its last definition. The helper check matches names anywhere in a
+#' function's code, so a local variable sharing its name with a function
+#' defined in the file is also reported; list that function as well to
+#' resolve it.
+#'
 #' @export
 #'
 #' @examples
@@ -31,11 +42,15 @@
 #' # Source all functions from an analysis notebook
 #' source_functions_from_rmd("analysis/01_preprocessing.Rmd")
 #'
+#' # Source only named functions, including any helpers they call
+#' source_functions_from_rmd("analysis/05_imputation_explore.Rmd",
+#'                           functions = c("fit_global_pca", "plot_pca_panels"))
+#'
 #' # Source into a specific environment
 #' my_env <- new.env()
 #' source_functions_from_rmd("analysis/utils.Rmd", envir = my_env)
 #' }
-source_functions_from_rmd <- function(path, envir = parent.frame()) {
+source_functions_from_rmd <- function(path, functions = NULL, envir = parent.frame()) {
 
   lines <- readLines(path, warn = FALSE)
 
@@ -74,6 +89,44 @@ source_functions_from_rmd <- function(path, envir = parent.frame()) {
   }
 
   func_exprs <- Filter(is_func_def, as.list(exprs))
+
+  # All checks run before anything is evaluated, so an error leaves `envir`
+  # untouched.
+  if (!is.null(functions)) {
+    func_names <- vapply(func_exprs, function(e) as.character(e[[2L]]), character(1))
+
+    missing_names <- setdiff(functions, func_names)
+    if (length(missing_names) > 0) {
+      stop("Not defined in ", path, ": ", paste(missing_names, collapse = ", "))
+    }
+
+    duplicated_names <- intersect(functions, func_names[duplicated(func_names)])
+    if (length(duplicated_names) > 0) {
+      stop("Defined more than once in ", path, ": ",
+           paste(duplicated_names, collapse = ", "))
+    }
+
+    is_requested <- func_names %in% functions
+    func_exprs <- func_exprs[is_requested]
+
+    # A requested function that calls another function defined in the file
+    # would otherwise only fail when first called. Checking every requested
+    # function also covers chains of calls.
+    unrequested_helpers <- setdiff(func_names, functions)
+    helper_calls <- lapply(func_exprs, function(e) {
+      intersect(all.names(e[[3L]]), unrequested_helpers)
+    })
+    calls_helper <- lengths(helper_calls) > 0
+    if (any(calls_helper)) {
+      stop("Requested functions call helpers defined in ", path,
+           " but not requested:\n",
+           paste0("  ", func_names[is_requested][calls_helper], "() calls ",
+                  vapply(helper_calls[calls_helper],
+                         function(helpers) paste0(helpers, "()", collapse = ", "),
+                         character(1)),
+                  collapse = "\n"))
+    }
+  }
 
   if (length(func_exprs) == 0) {
     warning("No function definitions found in ", path)

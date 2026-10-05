@@ -4,10 +4,13 @@
 \alias{source_functions_from_rmd}
 \title{Source functions from an Rmd file}
 \usage{
-source_functions_from_rmd(path, envir = parent.frame())
+source_functions_from_rmd(path, functions = NULL, envir = parent.frame())
 }
 \arguments{
 \item{path}{Path to the .Rmd file}
+
+\item{functions}{Optional character vector naming the functions to source.
+If \code{NULL} (the default), every function definition in the file is sourced.}
 
 \item{envir}{Environment in which to evaluate the functions (default: parent.frame())}
 }
@@ -30,11 +33,24 @@ Only assignments to a plain name are sourced: functions assigned into an
 object (e.g. \verb{obj$f <- function(...)}) and
 functions wrapped in another call (e.g. \verb{f <- memoise::memoise(function(...))})
 are skipped, since evaluating them would require running other code.
+
+When \code{functions} is given, an error is raised, and nothing is sourced, if a
+requested name is not defined in the file, is defined more than once, or
+belongs to a function that calls another function defined in the file that
+was not also requested. Without \code{functions}, a name defined more than once
+takes its last definition. The helper check matches names anywhere in a
+function's code, so a local variable sharing its name with a function
+defined in the file is also reported; list that function as well to
+resolve it.
 }
 \examples{
 \dontrun{
 # Source all functions from an analysis notebook
 source_functions_from_rmd("analysis/01_preprocessing.Rmd")
+
+# Source only named functions, including any helpers they call
+source_functions_from_rmd("analysis/05_imputation_explore.Rmd",
+                          functions = c("fit_global_pca", "plot_pca_panels"))
 
 # Source into a specific environment
 my_env <- new.env()
