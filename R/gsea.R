@@ -79,6 +79,9 @@ overlap_coefficient <- function(set1, set2) {
     d = edges, directed = FALSE, vertices = vertices
   )
   if (igraph::ecount(graph) > 0) {
+    # Similarities are discretised by the edge threshold rather than used as
+    # edge weights: the edge column is `similarity`, so `E(graph)$weight` is
+    # NULL and Walktrap runs on the unweighted network.
     cluster_ids <- as.integer(igraph::membership(
       igraph::cluster_walktrap(graph, weights = igraph::E(graph)$weight)
     ))
@@ -124,12 +127,12 @@ overlap_coefficient <- function(set1, set2) {
 #' @param adj_p_threshold Adjusted p-value threshold for filtering gene sets.
 #'   Default: 0.05.
 #' @param similarity_threshold Minimum similarity to consider two gene
-#'   sets as belonging to the same cluster. Default: 0.3.
+#'   sets as belonging to the same cluster. Default: 0.5.
 #' @param similarity_metric Character string specifying which similarity metric
 #'   to use. One of `"jaccard"` (Jaccard index) or `"overlap"` (overlap
 #'   coefficient / Szymkiewicz-Simpson). The overlap coefficient is less
 #'   sensitive to differences in set size, making it better suited for
-#'   hierarchically-related gene sets. Default: `"jaccard"`.
+#'   hierarchically-related gene sets. Default: `"overlap"`.
 #'
 #' @return A data frame containing all significant gene sets (one row per gene
 #'   set) with added columns:
@@ -142,7 +145,7 @@ overlap_coefficient <- function(set1, set2) {
 #' @details
 #' Clustering is performed using the Walktrap algorithm, which detects
 #' communities based on random walks through the similarity network. Gene sets
-#' that are densely connected (high Jaccard similarity) tend to end up in the
+#' that are densely connected (high similarity) tend to end up in the
 #' same cluster. This method can identify meaningful subcommunities even within
 #' connected components.
 #'
@@ -190,8 +193,8 @@ cluster_enrichment_results <- function(enrichment_results,
                                   genes_col = "leading_edge",
                                   n_genes_col = "n_genes",
                                   adj_p_threshold = 0.05,
-                                  similarity_threshold = 0.3,
-                                  similarity_metric = c("jaccard", "overlap")) {
+                                  similarity_threshold = 0.5,
+                                  similarity_metric = c("overlap", "jaccard")) {
 
   similarity_metric <- match.arg(similarity_metric)
   similarity_fn <- .select_similarity_fn(similarity_metric)
@@ -827,12 +830,12 @@ plot_gsea_bars <- function(enrichment_results,
 #' @param adj_p_threshold Adjusted p-value threshold for filtering gene sets.
 #'   Default: 0.05.
 #' @param similarity_threshold Minimum similarity to draw an edge between two
-#'   gene sets. Default: 0.3.
+#'   gene sets. Default: 0.5.
 #' @param similarity_metric Character string specifying which similarity metric
 #'   to use. One of `"jaccard"` (Jaccard index) or `"overlap"` (overlap
 #'   coefficient / Szymkiewicz-Simpson). Pass the same metric to
 #'   [cluster_enrichment_results()] to keep cluster assignments consistent.
-#'   Default: `"jaccard"`.
+#'   Default: `"overlap"`.
 #' @param min_cluster_size Minimum number of gene sets in a cluster to draw
 #'   a hull and label. Default: 3.
 #' @param exclude_singletons Logical. If `TRUE`, singleton clusters (size 1)
@@ -936,8 +939,8 @@ plot_gsea_network <- function(gsea_results,
                                leading_edge_col = "leading_edge",
                                n_genes_col = "n_genes",
                                adj_p_threshold = 0.05,
-                               similarity_threshold = 0.3,
-                               similarity_metric = c("jaccard", "overlap"),
+                               similarity_threshold = 0.5,
+                               similarity_metric = c("overlap", "jaccard"),
                                min_cluster_size = 3,
                                exclude_singletons = FALSE,
                                show_labels = TRUE,

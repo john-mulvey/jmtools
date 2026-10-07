@@ -12,8 +12,8 @@ plot_gsea_network(
   leading_edge_col = "leading_edge",
   n_genes_col = "n_genes",
   adj_p_threshold = 0.05,
-  similarity_threshold = 0.3,
-  similarity_metric = c("jaccard", "overlap"),
+  similarity_threshold = 0.5,
+  similarity_metric = c("overlap", "jaccard"),
   min_cluster_size = 3,
   exclude_singletons = FALSE,
   show_labels = TRUE,
@@ -50,13 +50,13 @@ number of genes in each gene set. Default: "n_genes".}
 Default: 0.05.}
 
 \item{similarity_threshold}{Minimum similarity to draw an edge between two
-gene sets. Default: 0.3.}
+gene sets. Default: 0.5.}
 
 \item{similarity_metric}{Character string specifying which similarity metric
 to use. One of \code{"jaccard"} (Jaccard index) or \code{"overlap"} (overlap
 coefficient / Szymkiewicz-Simpson). Pass the same metric to
 \code{\link[=cluster_enrichment_results]{cluster_enrichment_results()}} to keep cluster assignments consistent.
-Default: \code{"jaccard"}.}
+Default: \code{"overlap"}.}
 
 \item{min_cluster_size}{Minimum number of gene sets in a cluster to draw
 a hull and label. Default: 3.}

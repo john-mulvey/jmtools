@@ -12,8 +12,8 @@ cluster_enrichment_results(
   genes_col = "leading_edge",
   n_genes_col = "n_genes",
   adj_p_threshold = 0.05,
-  similarity_threshold = 0.3,
-  similarity_metric = c("jaccard", "overlap")
+  similarity_threshold = 0.5,
+  similarity_metric = c("overlap", "jaccard")
 )
 }
 \arguments{
@@ -42,13 +42,13 @@ use \code{"n_gene_set"}.}
 Default: 0.05.}
 
 \item{similarity_threshold}{Minimum similarity to consider two gene
-sets as belonging to the same cluster. Default: 0.3.}
+sets as belonging to the same cluster. Default: 0.5.}
 
 \item{similarity_metric}{Character string specifying which similarity metric
 to use. One of \code{"jaccard"} (Jaccard index) or \code{"overlap"} (overlap
 coefficient / Szymkiewicz-Simpson). The overlap coefficient is less
 sensitive to differences in set size, making it better suited for
-hierarchically-related gene sets. Default: \code{"jaccard"}.}
+hierarchically-related gene sets. Default: \code{"overlap"}.}
 }
 \value{
 A data frame containing all significant gene sets (one row per gene
@@ -68,7 +68,7 @@ added cluster information.
 \details{
 Clustering is performed using the Walktrap algorithm, which detects
 communities based on random walks through the similarity network. Gene sets
-that are densely connected (high Jaccard similarity) tend to end up in the
+that are densely connected (high similarity) tend to end up in the
 same cluster. This method can identify meaningful subcommunities even within
 connected components.
 
