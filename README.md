@@ -2,6 +2,8 @@
 
 Personal utility functions for R data analysis workflows.
 
+This is a personal package, not one maintained for general use. Its functions, arguments and defaults may change without notice. Please record the specific commit used in your analysis if you wish to reproduce it.
+
 ## Installation
 
 ```r
